@@ -1,6 +1,5 @@
 package io.github.rightward.pocketgameplay
 
-import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -10,6 +9,7 @@ import androidx.webkit.WebViewClientCompat
 
 class OfflineGameWebViewClient(
     private val assetLoader: WebViewAssetLoader,
+    private val gamePathHandler: GamePathHandler,
     private val onRendererGone: () -> Unit
 ) : WebViewClientCompat() {
 
@@ -18,16 +18,23 @@ class OfflineGameWebViewClient(
         request: WebResourceRequest
     ): WebResourceResponse {
         val uri = request.url
-        val isLocalGameUrl = uri.scheme == "https" &&
+        val isLocalAssetHost = uri.scheme == "https" &&
             uri.host == LOCAL_ASSET_HOST &&
-            (uri.port == -1 || uri.port == 443) &&
-            uri.encodedPath?.startsWith(GAME_PATH_PREFIX) == true
+            (uri.port == -1 || uri.port == 443)
 
-        return if (isLocalGameUrl) {
+        if (!isLocalAssetHost) {
+            return GamePathHandler.errorResponse(403, "Offline content only")
+        }
+
+        val encodedPath = uri.encodedPath ?: return GamePathHandler.errorResponse(404, "Not Found")
+
+        // The /game/ route is the selected entry-point URL. Other paths on this reserved
+        // local origin represent root-relative assets such as /assets/sprite.png.
+        return if (encodedPath.startsWith(GAME_PATH_PREFIX)) {
             assetLoader.shouldInterceptRequest(uri)
                 ?: GamePathHandler.errorResponse(404, "Not Found")
         } else {
-            GamePathHandler.errorResponse(403, "Offline content only")
+            gamePathHandler.handle(encodedPath.removePrefix("/"))
         }
     }
 
@@ -38,12 +45,7 @@ class OfflineGameWebViewClient(
         val uri: Uri = request.url
         return !(uri.scheme == "https" &&
             uri.host == LOCAL_ASSET_HOST &&
-            (uri.port == -1 || uri.port == 443) &&
-            uri.encodedPath?.startsWith(GAME_PATH_PREFIX) == true)
-    }
-
-    override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-        super.onPageStarted(view, url, favicon)
+            (uri.port == -1 || uri.port == 443))
     }
 
     override fun onRenderProcessGone(

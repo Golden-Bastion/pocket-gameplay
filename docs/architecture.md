@@ -12,18 +12,20 @@ The user selects a game directory through the Storage Access Framework. The app 
 
 The app searches the selected tree for `.html` and `.htm` files. Likely root entry points are sorted toward the top of the chooser, but filenames are not assumed: the user can select a game page named after the game or any other discovered HTML file.
 
-Scanning is bounded by a maximum depth and number of visited entries so malformed or unusually large directory trees cannot cause unbounded work.
+Scanning is bounded by a maximum depth and number of visited entries so unusually large directory trees cannot cause unbounded work.
 
 ## Local resource serving
 
-A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. Relative references therefore retain their normal web behavior:
+A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. Relative references retain their normal web behavior:
 
 ```html
 <script src="js/game.js"></script>
 <img src="assets/player.png">
 ```
 
-The game is loaded from `https://appassets.androidplatform.net/game/<entry-point>`. Missing or invalid local paths produce a 404 response rather than falling through to the network.
+The selected entry point is loaded from `https://appassets.androidplatform.net/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
+
+Missing or invalid local paths return a 404 response rather than falling through to the network.
 
 ## WebView security
 

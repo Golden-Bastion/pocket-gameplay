@@ -10,7 +10,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -20,7 +19,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
 import java.util.concurrent.ExecutorService
@@ -184,6 +182,7 @@ class MainActivity : Activity() {
     }
 
     private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint) {
+        webView?.stopLoading()
         pathHandler.setGameRoot(root)
         showPlayer()
 
@@ -217,7 +216,7 @@ class MainActivity : Activity() {
                 allowUniversalAccessFromFileURLs = false
             }
             view.webChromeClient = WebChromeClient()
-            view.webViewClient = OfflineGameWebViewClient(assetLoader) {
+            view.webViewClient = OfflineGameWebViewClient(assetLoader, pathHandler) {
                 mainHandler.post {
                     webView?.let { crashed ->
                         (crashed.parent as? ViewGroup)?.removeView(crashed)
