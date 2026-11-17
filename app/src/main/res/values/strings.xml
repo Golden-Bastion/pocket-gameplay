@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Pocket Gameplay</string>
+    <string name="choose_game_folder">Choose game folder</string>
+    <string name="folder_picker_title">Select a folder containing an HTML5 game</string>
+</resources>
