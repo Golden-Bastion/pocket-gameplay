@@ -26,15 +26,17 @@ class OfflineGameWebViewClient(
             return GamePathHandler.errorResponse(403, "Offline content only")
         }
 
-        val encodedPath = uri.encodedPath ?: return GamePathHandler.errorResponse(404, "Not Found")
+        // Android Uri.path is already URL-decoded. Keep path validation and document lookup
+        // on this single decoded representation to preserve literal percent characters.
+        val path = uri.path ?: return GamePathHandler.errorResponse(404, "Not Found")
 
         // The /game/ route is the selected entry-point URL. Other paths on this reserved
         // local origin represent root-relative assets such as /assets/sprite.png.
-        return if (encodedPath.startsWith(GAME_PATH_PREFIX)) {
+        return if (path.startsWith(GAME_PATH_PREFIX)) {
             assetLoader.shouldInterceptRequest(uri)
                 ?: GamePathHandler.errorResponse(404, "Not Found")
         } else {
-            gamePathHandler.handle(encodedPath.removePrefix("/"))
+            gamePathHandler.handle(path.removePrefix("/"))
         }
     }
 

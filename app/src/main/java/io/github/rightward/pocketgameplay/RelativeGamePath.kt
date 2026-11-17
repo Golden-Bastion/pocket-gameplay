@@ -1,29 +1,18 @@
 package io.github.rightward.pocketgameplay
 
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-
 /**
- * Converts a WebView path suffix into safe, decoded path segments below the selected game root.
+ * Validates a path that has already been URL-decoded by Android's Uri API.
  *
- * This is deliberately independent of Android classes so path traversal rules can be unit tested.
+ * The caller must pass Uri.path (not Uri.encodedPath). Decoding a second time would
+ * corrupt legitimate filenames containing percent characters and can create ambiguity.
  */
 object RelativeGamePath {
     fun parse(path: String): List<String>? {
-        if (path.isBlank() || path.startsWith('/')) return null
-
-        val decoded = try {
-            // A plus sign is a literal path character, not a form-encoded space.
-            URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8)
-        } catch (_: IllegalArgumentException) {
+        if (path.isBlank() || path.startsWith('/') || '\\' in path || '\u0000' in path) {
             return null
         }
 
-        if (decoded.isBlank() || decoded.startsWith('/') || '\\' in decoded || '\u0000' in decoded) {
-            return null
-        }
-
-        val segments = decoded.split('/')
+        val segments = path.split('/')
         if (segments.any { segment ->
                 segment.isEmpty() || segment == "." || segment == ".." ||
                     '\\' in segment || '\u0000' in segment
