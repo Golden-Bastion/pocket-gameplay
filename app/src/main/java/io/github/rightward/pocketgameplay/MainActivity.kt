@@ -374,8 +374,9 @@ class MainActivity : Activity() {
                     addAction(primaryActions, "Play") { playLibraryGame(game) }
                 } else if (game.storageType == LibraryStorageType.FOLDER) {
                     addAction(primaryActions, "Reconnect") { requestFolderReconnect(game) }
-                } else {
-                    addAction(primaryActions, "Replace ZIP") { requestZipReplacement(game) }
+                }
+                if (LibraryGameCatalog.supportsZipReplacement(game)) {
+                    addAction(primaryActions, "Update ZIP") { requestZipReplacement(game) }
                 }
                 addAction(primaryActions, "Rename") { renameLibraryGame(game) }
                 addAction(primaryActions, "Details") { showGameDetails(game) }
