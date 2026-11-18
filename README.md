@@ -42,6 +42,8 @@ gradle wrapper --gradle-version 8.13
 
 Then use `./gradlew` for subsequent builds. The first build on a clean workspace also downloads the pinned Eruda package from npm and verifies its SHA-512 integrity before packaging the script and MIT notice into the APK. No network access is needed to use the developer console at runtime.
 
+GitHub Actions restores a shared Gradle cache for pull requests. Trusted builds on `main` refresh that cache after merges, and a scheduled/manual warm-up keeps it populated. The Eruda package archive is cached separately. See [CI caching](docs/ci-caching.md) for the cache scopes and security model.
+
 See [the developer console guide](docs/developer-console.md) for its behavior and security boundaries.
 
 See [playback controls and fullscreen](docs/player-controls.md) for the control surface, Back priority, fullscreen lifecycle, and rotation behavior.
