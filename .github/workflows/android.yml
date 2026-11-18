@@ -89,6 +89,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           WORKFLOW_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
@@ -98,7 +99,7 @@ jobs:
             exit 1
           fi
 
-          if [[ -z "$RELEASE_TAG" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -z "$INPUT_RELEASE_TAG" ]]; then
             echo "::error::release_tag is required for the release operation."
             exit 1
           fi
@@ -140,6 +141,12 @@ jobs:
           version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
           if (( version_code < 1 || version_code > 2100000000 )); then
             echo "::error::The tag produces an invalid Android versionCode: $version_code"
+            exit 1
+          fi
+
+          package_version_code="$(sed -n 's/^appVersionCode=//p' gradle.properties | head -n 1)"
+          if [[ -z "$package_version_code" || "$package_version_code" != "$version_code" ]]; then
+            echo "::error::gradle.properties appVersionCode ($package_version_code) does not match the version code calculated from $RELEASE_TAG ($version_code)."
             exit 1
           fi
 
