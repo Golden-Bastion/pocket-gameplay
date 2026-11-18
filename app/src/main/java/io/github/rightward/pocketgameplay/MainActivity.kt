@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextWatcher
@@ -82,6 +83,7 @@ class MainActivity : Activity() {
     private var currentGameAssetHost: String? = null
     private var isPlaying = false
     private var scanGeneration = 0
+    private val libraryExitConfirmation = LibraryExitConfirmation()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,6 +117,7 @@ class MainActivity : Activity() {
     }
 
     private fun showHome(message: String? = null) {
+        libraryExitConfirmation.reset()
         cancelPendingFileChooser()
         currentGameAssetHost = null
         hideWebFullscreen(notifyPage = false)
@@ -1480,11 +1483,14 @@ class MainActivity : Activity() {
             PlayerBackAction.NAVIGATE_GAME_HISTORY -> webView?.goBack()
             PlayerBackAction.RETURN_TO_LIBRARY -> returnToLibrary()
             PlayerBackAction.EXIT_ACTIVITY -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    if (!moveTaskToBack(true)) finish()
+                if (libraryExitConfirmation.shouldExit(SystemClock.elapsedRealtime())) {
+                    finish()
                 } else {
-                    @Suppress("DEPRECATION")
-                    super.onBackPressed()
+                    Toast.makeText(
+                        this,
+                        R.string.press_back_again_to_exit,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }
