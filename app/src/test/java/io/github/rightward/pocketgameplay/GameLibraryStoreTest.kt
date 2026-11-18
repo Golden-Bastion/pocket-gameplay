@@ -130,6 +130,36 @@ class GameLibraryStoreTest {
     }
 
     @Test
+    fun updatingImportedFilesPreservesLibraryAndBrowserIdentity() {
+        withTemporaryDirectory { directory ->
+            val store = GameLibraryStore(File(directory, "library.properties"))
+            val original = sampleImportedGame("existing").copy(
+                title = "Original title",
+                rootPath = "old-wrapper",
+                importedAtEpochMillis = 1234L
+            )
+            store.add(original)
+
+            val replacement = original.copy(
+                rootPath = "new-wrapper",
+                entryPoint = "pages/start.html"
+            )
+
+            assertTrue(store.update(replacement))
+
+            val saved = store.all().single()
+            assertEquals(original.id, saved.id)
+            assertEquals(original.title, saved.title)
+            assertEquals(original.directoryName, saved.directoryName)
+            assertEquals(original.importedAtEpochMillis, saved.importedAtEpochMillis)
+            assertEquals(original.originKey, saved.originKey)
+            assertEquals(original.browserProfile, saved.browserProfile)
+            assertEquals("new-wrapper", saved.rootPath)
+            assertEquals("pages/start.html", saved.entryPoint)
+        }
+    }
+
+    @Test
     fun folderPermissionCanBeReboundWithoutChangingGameOrOriginIdentity() {
         withTemporaryDirectory { directory ->
             val store = GameLibraryStore(File(directory, "library.properties"))
