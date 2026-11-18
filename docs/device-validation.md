@@ -50,7 +50,7 @@ A first-run storage message is expected on a fresh profile. A persistence failur
 - [ ] Tap **Choose a local video file**. Android's system document picker should appear; select a supported local video and confirm it appears in the preview.
 - [ ] Seek within the selected video if its codec and WebView implementation support it.
 - [ ] Tap **Save fixture export file**. Android should ask for a destination. Save the file and confirm it exists at the chosen location.
-- [ ] Open the native **Controls → Dev** action. Confirm the button briefly shows **Loading…**, then **Dev Loaded**, and Eruda's floating entry button appears.
+- [ ] Open the player toolbar's More menu and select **Dev**. Confirm the menu item briefly shows **Loading…**, then **Dev Loaded**, and Eruda's floating entry button appears.
 - [ ] Tap Eruda's floating entry button. Confirm the panel opens using Eruda's default UI; use the same button to close it again.
 - [ ] Confirm the native Dev action does not attempt to show, hide, or otherwise control Eruda after initialization.
 - [ ] Confirm opening/closing the console does not reload or reset the game, and that Eruda is absent on a fresh launch until explicitly opened.
@@ -61,12 +61,14 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 
 ## D. Player controls and navigation
 
-- [ ] Open and close the native Controls panel.
-- [ ] Use **Reload** and confirm the current game page reloads.
-- [ ] Use **Fullscreen** and confirm system bars/player chrome hide; use Android Back to exit immersive fullscreen.
+- [ ] Confirm the fixed player toolbar stays above the game viewport and that the page starts below it rather than drawing behind the toolbar.
+- [ ] Confirm the toolbar shows an exit icon, a reload icon, the current game title, and a More menu. Long game titles should truncate without hiding the toolbar actions.
+- [ ] Open and dismiss the More menu. Confirm it contains **Fullscreen** and **Dev**.
+- [ ] Use the toolbar's **Reload** icon and confirm the current game page reloads.
+- [ ] Select **Fullscreen** from the More menu and confirm system bars and the toolbar hide; use Android Back to exit immersive fullscreen and confirm the toolbar returns.
 - [ ] Test a game's own HTML fullscreen or fullscreen media control, if available, and confirm Android Back exits that fullscreen view first.
 - [ ] Rotate the device while a game is running. Confirm the activity/WebView remains usable and the game is not unexpectedly returned to the library.
-- [ ] Press Android Back with the controls panel expanded; it should close the panel before leaving the game.
+- [ ] Press Android Back with the More menu open; it should dismiss the menu before leaving the game.
 - [ ] With no overlay open, use Back in a game that has navigation history; it should navigate game history before returning to the library.
 - [ ] In a SugarCube game, swipe inward from the left and right screen edges to open/close its sidebar. Confirm both gestures reach the game instead of triggering system Back.
 - [ ] Confirm system Back remains available from the unexcluded upper/lower portions of either screen edge and still follows the existing player Back priority.
