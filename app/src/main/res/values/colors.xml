@@ -1,0 +1,15 @@
+<resources>
+    <color name="pg_background">#101316</color>
+    <color name="pg_surface">#191E22</color>
+    <color name="pg_surface_raised">#252B31</color>
+    <color name="pg_outline">#354049</color>
+    <color name="pg_accent">#D8A85F</color>
+    <color name="pg_accent_ripple">#40D8A85F</color>
+    <color name="pg_on_accent">#211A10</color>
+    <color name="pg_text_primary">#F2F0EB</color>
+    <color name="pg_text_secondary">#B2B7B8</color>
+    <color name="pg_text_muted">#879199</color>
+    <color name="pg_warning">#E0A273</color>
+    <color name="pg_system_bar">#0B0D0F</color>
+    <color name="pg_icon_background">#1A2024</color>
+</resources>

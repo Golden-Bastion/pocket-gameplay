@@ -1,9 +1,12 @@
 <resources>
     <string name="app_name">Pocket Gameplay</string>
+    <string name="home_eyebrow">OFFLINE HTML5 PLAYER</string>
+    <string name="home_tagline">Your games. Your device. Offline.</string>
+    <string name="library_search_hint">Search by game title or start page</string>
     <string name="choose_game_folder">Open game folder</string>
     <string name="import_zip_game">Import ZIP game</string>
     <string name="library_title">Your library</string>
-    <string name="library_empty">No games in your library yet.</string>
+    <string name="library_empty">No games here yet. Open a game folder or import a ZIP to get started.</string>
     <string name="library_read_error">The saved library could not be read.</string>
     <string name="play_game">Play</string>
     <string name="remove_game">Remove</string>

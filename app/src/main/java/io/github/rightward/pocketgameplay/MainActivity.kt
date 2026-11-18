@@ -31,6 +31,7 @@ import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -127,53 +128,92 @@ class MainActivity : Activity() {
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(32), dp(24), dp(32))
-            setBackgroundColor(Color.rgb(16, 17, 20))
+            gravity = Gravity.START
+            setPadding(dp(20), dp(28), dp(20), dp(32))
+            setBackgroundColor(getColor(R.color.pg_background))
         }
 
-        page.addView(TextView(this).apply {
+        val brandHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val brandMark = ImageView(this).apply {
+            setImageResource(R.drawable.ic_pocket_gameplay_mark)
+            contentDescription = getString(R.string.app_name)
+        }
+        brandHeader.addView(brandMark, LinearLayout.LayoutParams(dp(56), dp(56)).apply {
+            marginEnd = dp(14)
+        })
+        val brandText = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        brandText.addView(TextView(this).apply {
+            text = getString(R.string.home_eyebrow)
+            textSize = 11f
+            letterSpacing = 0.1f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.pg_accent))
+        }, matchWidthWrapContent())
+        brandText.addView(TextView(this).apply {
             text = getString(R.string.app_name)
-            textSize = 30f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
+            textSize = 27f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.pg_text_primary))
+            includeFontPadding = false
         }, matchWidthWrapContent())
+        brandHeader.addView(brandText, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        page.addView(brandHeader, matchWidthWrapContent())
 
         page.addView(TextView(this).apply {
-            text = "Play HTML5 games stored on your device."
-            textSize = 16f
-            setTextColor(Color.LTGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(24))
+            text = getString(R.string.home_tagline)
+            textSize = 15f
+            setTextColor(getColor(R.color.pg_text_secondary))
+            setPadding(0, dp(14), 0, dp(22))
         }, matchWidthWrapContent())
 
-        page.addView(Button(this).apply {
+        val openFolderButton = Button(
+            this, null, 0, R.style.Widget_PocketGameplay_Button_Primary
+        ).apply {
             text = getString(R.string.choose_game_folder)
-            isAllCaps = false
             setOnClickListener { chooseGameFolder() }
-        }, matchWidthWrapContent())
+        }
+        page.addView(openFolderButton, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+        ).apply {
+            bottomMargin = dp(10)
+        })
 
-        page.addView(Button(this).apply {
+        val importZipButton = Button(this).apply {
             text = getString(R.string.import_zip_game)
-            isAllCaps = false
             setOnClickListener { chooseZipArchive() }
-        }, matchWidthWrapContent())
+        }
+        page.addView(importZipButton, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
+        ))
 
         if (!message.isNullOrBlank()) {
             page.addView(TextView(this).apply {
                 text = message
                 textSize = 14f
-                setTextColor(Color.LTGRAY)
-                gravity = Gravity.CENTER
-                setPadding(0, dp(20), 0, dp(4))
-            }, matchWidthWrapContent())
+                setTextColor(getColor(R.color.pg_text_secondary))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setBackgroundResource(R.drawable.bg_message_note)
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(16)
+            })
         }
 
         page.addView(TextView(this).apply {
             text = getString(R.string.library_title)
             textSize = 20f
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(28), 0, dp(12))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.pg_text_primary))
+            setPadding(0, dp(30), 0, dp(12))
         }, matchWidthWrapContent())
 
         addLibraryItems(page)
@@ -203,7 +243,7 @@ class MainActivity : Activity() {
         } catch (_: IOException) {
             page.addView(TextView(this).apply {
                 text = getString(R.string.library_read_error)
-                setTextColor(Color.LTGRAY)
+                setTextColor(getColor(R.color.pg_text_secondary))
                 textSize = 14f
             }, matchWidthWrapContent())
             return
@@ -212,19 +252,22 @@ class MainActivity : Activity() {
         if (games.isEmpty()) {
             page.addView(TextView(this).apply {
                 text = getString(R.string.library_empty)
-                setTextColor(Color.LTGRAY)
+                setTextColor(getColor(R.color.pg_text_secondary))
                 textSize = 14f
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setBackgroundResource(R.drawable.bg_library_card)
             }, matchWidthWrapContent())
             return
         }
 
         val search = EditText(this).apply {
-            hint = "Search games by title or start page"
+            hint = getString(R.string.library_search_hint)
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setTextColor(getColor(R.color.pg_text_primary))
+            setHintTextColor(getColor(R.color.pg_text_secondary))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setBackgroundResource(R.drawable.bg_input)
         }
         page.addView(search, matchWidthWrapContent())
 
@@ -259,7 +302,8 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 textSize = 12f
                 minWidth = 0
-                setPadding(dp(2), 0, dp(2), 0)
+                minHeight = dp(46)
+                setPadding(dp(4), 0, dp(4), 0)
                 setOnClickListener { action() }
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
                 marginEnd = dp(3)
@@ -276,7 +320,7 @@ class MainActivity : Activity() {
             if (filtered.isEmpty()) {
                 results.addView(TextView(this).apply {
                     text = "No games match your search."
-                    setTextColor(Color.LTGRAY)
+                    setTextColor(getColor(R.color.pg_text_secondary))
                     textSize = 14f
                     setPadding(0, dp(12), 0, dp(12))
                 }, matchWidthWrapContent())
@@ -287,14 +331,14 @@ class MainActivity : Activity() {
                 val problem = libraryGameProblem(game)
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
-                    setBackgroundColor(Color.rgb(31, 33, 38))
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    setBackgroundResource(R.drawable.bg_library_card)
                 }
 
                 card.addView(TextView(this).apply {
                     text = game.title
                     textSize = 17f
-                    setTextColor(Color.WHITE)
+                    setTextColor(getColor(R.color.pg_text_primary))
                 }, matchWidthWrapContent())
 
                 val storageLabel = if (game.storageType == LibraryStorageType.FOLDER) {
@@ -305,7 +349,7 @@ class MainActivity : Activity() {
                 card.addView(TextView(this).apply {
                     text = storageLabel + " · Start page: " + game.entryPoint
                     textSize = 12f
-                    setTextColor(Color.LTGRAY)
+                    setTextColor(getColor(R.color.pg_text_secondary))
                     setPadding(0, dp(4), 0, dp(6))
                 }, matchWidthWrapContent())
 
@@ -313,7 +357,7 @@ class MainActivity : Activity() {
                     card.addView(TextView(this).apply {
                         text = problem
                         textSize = 12f
-                        setTextColor(Color.rgb(255, 190, 120))
+                        setTextColor(getColor(R.color.pg_warning))
                         setPadding(0, 0, 0, dp(8))
                     }, matchWidthWrapContent())
                 }
@@ -1687,7 +1731,7 @@ class MainActivity : Activity() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.argb(238, 24, 26, 31))
+            setBackgroundResource(R.drawable.bg_library_card)
             elevation = dp(12).toFloat()
             visibility = View.GONE
         }
