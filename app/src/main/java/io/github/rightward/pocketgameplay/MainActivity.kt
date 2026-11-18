@@ -979,7 +979,7 @@ class MainActivity : Activity() {
         val candidateMimeType = mimeType?.substringBefore(';')?.trim()
         val safeMimeType = candidateMimeType?.takeIf { candidate ->
             candidate.count { it == '/' } == 1 &&
-                candidate.none { it.isWhitespace() || it == '\\r' || it == '\\n' }
+                candidate.none { it.isWhitespace() }
         } ?: GameAssetMimeTypes.forFileName(safeName)
 
         pendingDownload = PendingGameDownload(source.uri, safeName)
