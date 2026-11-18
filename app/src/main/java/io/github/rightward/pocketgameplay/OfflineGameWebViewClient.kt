@@ -11,6 +11,7 @@ class OfflineGameWebViewClient(
     private val assetLoader: WebViewAssetLoader,
     private val gamePathHandler: GamePathHandler,
     private val assetHost: String,
+    private val onPageStarted: () -> Unit,
     private val onPageFinished: () -> Unit,
     private val onRendererGone: () -> Unit
 ) : WebViewClientCompat() {
@@ -45,6 +46,11 @@ class OfflineGameWebViewClient(
         view: WebView,
         request: WebResourceRequest
     ): Boolean = !isLocalAssetOrigin(request.url)
+
+    override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+        super.onPageStarted(view, url, favicon)
+        onPageStarted()
+    }
 
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
