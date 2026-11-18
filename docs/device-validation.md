@@ -37,7 +37,7 @@ Open the fixture and inspect its **Runtime probes** list.
 - [ ] Dedicated worker passes.
 - [ ] WebGL either creates a context or is recorded as unavailable on this device, with the WebView/device version noted.
 - [ ] The first page load reports that localStorage and IndexedDB were initialized.
-- [ ] Use the native **Controls → Reload** action. The localStorage and IndexedDB probes should now report that values from an earlier page load were retained.
+- [ ] Use the player toolbar's **Reload** icon. The localStorage and IndexedDB probes should now report that values from an earlier page load were retained.
 - [ ] Leave the game, reopen it from the library, and confirm the storage probes still report the previous values.
 - [ ] Tap **Test Web Audio** and confirm the short tone plays after the user gesture.
 
