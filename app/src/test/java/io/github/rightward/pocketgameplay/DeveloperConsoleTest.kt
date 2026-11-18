@@ -12,38 +12,30 @@ class DeveloperConsoleTest {
     }
 
     @Test
-    fun consoleLoaderIsLazyAndIdempotent() {
+    fun injectsBundledScriptAndInitializesLikeTheOfficialBookmarklet() {
+        val script = DeveloperConsole.TOGGLE_SCRIPT
+
+        assertTrue(script.contains("document.body.appendChild(script)"))
+        assertTrue(script.contains("window.eruda.init()"))
+        assertFalse(script.contains("window.eruda.show"))
+        assertFalse(script.contains("window.eruda.hide"))
+        assertFalse(script.contains("window.eruda.get"))
+    }
+
+    @Test
+    fun loadingIsLazyAndIdempotent() {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
         assertTrue(script.contains("if (state.loading)"))
-        assertTrue(script.contains("state.initialized"))
-        assertTrue(script.contains("window.eruda.init"))
-        assertFalse(script.contains("entryButton.hide()"))
-    }
-
-    @Test
-    fun nativeToggleUsesDocumentedShowSequenceAndCanHideTheConsole() {
-        val script = DeveloperConsole.TOGGLE_SCRIPT
-
-        assertTrue(script.contains("window.eruda.show();"))
-        assertTrue(script.contains("window.eruda.show('console')"))
-        assertTrue(script.contains("window.eruda.hide()"))
-        assertTrue(script.contains("state.visible"))
-    }
-
-    @Test
-    fun keepsErudaFloatingEntryButtonAvailable() {
-        val script = DeveloperConsole.TOGGLE_SCRIPT
-
-        assertFalse(script.contains("entryButton.hide()"))
-        assertTrue(script.contains("Keep Eruda's floating entry button visible"))
+        assertTrue(script.contains("if (state.initialized && window.eruda)"))
+        assertTrue(script.contains("state.status = 'ready'"))
     }
 
     @Test
     fun exposesLoadingAndFailureStatesForNativeFeedback() {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
-        listOf("loading", "shown", "hidden", "load_error", "init_error", "timeout").forEach { status ->
+        listOf("loading", "ready", "load_error", "init_error", "timeout").forEach { status ->
             assertTrue("Missing console state: $status", script.contains("'$status'"))
         }
         assertTrue(script.contains("window.setTimeout"))
@@ -62,11 +54,12 @@ class DeveloperConsoleTest {
     }
 
     @Test
-    fun initializesExpectedMobileDebugTools() {
+    fun doesNotOverrideErudaDefaultToolsOrUiBehavior() {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
-        listOf("console", "elements", "network", "resources", "sources").forEach { tool ->
-            assertTrue("Missing Eruda tool: $tool", script.contains("'$tool'"))
-        }
+        assertFalse(script.contains("tool:"))
+        assertFalse(script.contains("autoScale:"))
+        assertFalse(script.contains("useShadowDom:"))
+        assertFalse(script.contains("entryButton"))
     }
 }
