@@ -805,7 +805,7 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 textSize = 13f
                 minHeight = dp(44)
-                setOnClickListener(action)
+                setOnClickListener { action() }
             }
             panel.addView(
                 button,
