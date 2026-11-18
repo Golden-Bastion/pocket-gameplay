@@ -188,7 +188,7 @@ jobs:
 
       - name: Run unit tests and assemble debug APK
         if: env.RELEASE_REQUESTED != 'true'
-        run: gradle testDebugUnitTest assembleDebug
+        run: gradle testDebugUnitTest verifyDebugErudaAsset
 
       - name: Run unit tests and assemble signed release APK
         if: env.RELEASE_REQUESTED == 'true'
@@ -201,7 +201,7 @@ jobs:
           RELEASE_VERSION_CODE: ${{ steps.release-meta.outputs.version_code }}
         run: |
           set -euo pipefail
-          gradle testDebugUnitTest assembleRelease \
+          gradle testDebugUnitTest verifyReleaseErudaAsset \
             -PappVersionName="$RELEASE_VERSION_NAME" \
             -PappVersionCode="$RELEASE_VERSION_CODE"
 

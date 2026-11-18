@@ -2,6 +2,7 @@ import java.io.File
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.zip.ZipFile
 
 plugins {
     id("com.android.application")
@@ -163,6 +164,53 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
+    }
+}
+
+fun verifyPackagedEruda(apkFile: File) {
+    check(apkFile.isFile) {
+        "Expected Android APK was not produced: ${apkFile.absolutePath}"
+    }
+
+    ZipFile(apkFile).use { archive ->
+        val script = archive.getEntry("assets/eruda.js")
+            ?: throw GradleException("The APK does not contain assets/eruda.js.")
+        check(script.size >= 50_000L) {
+            "The packaged Eruda script is unexpectedly small (${script.size} bytes)."
+        }
+
+        val license = archive.getEntry("assets/ERUDA-LICENSE.txt")
+            ?: throw GradleException("The APK does not contain the Eruda MIT license.")
+        check(license.size > 0L) {
+            "The packaged Eruda license notice is empty."
+        }
+
+        val version = archive.getEntry("assets/ERUDA-VERSION.txt")
+            ?: throw GradleException("The APK does not contain Eruda version metadata.")
+        val versionText = archive.getInputStream(version).bufferedReader().use { it.readText() }
+        check(versionText.contains("Eruda $erudaVersion")) {
+            "The APK's Eruda version metadata does not match the pinned version $erudaVersion."
+        }
+    }
+
+    logger.lifecycle("Verified Eruda $erudaVersion bundle, license and version metadata in ${apkFile.name}.")
+}
+
+val verifyDebugErudaAsset by tasks.registering {
+    dependsOn("assembleDebug")
+    doLast {
+        verifyPackagedEruda(
+            layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+        )
+    }
+}
+
+val verifyReleaseErudaAsset by tasks.registering {
+    dependsOn("assembleRelease")
+    doLast {
+        verifyPackagedEruda(
+            layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
+        )
     }
 }
 
