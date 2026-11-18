@@ -1783,8 +1783,7 @@ class MainActivity : Activity() {
                     applyDeveloperConsoleStatus("loading")
                     pollDeveloperConsoleStatus(player)
                 }
-                "shown" -> applyDeveloperConsoleStatus("shown")
-                "hidden" -> applyDeveloperConsoleStatus("hidden")
+                "ready" -> applyDeveloperConsoleStatus("ready")
                 "load_error" -> applyDeveloperConsoleStatus("load_error")
                 "init_error" -> applyDeveloperConsoleStatus("init_error")
                 "timeout" -> applyDeveloperConsoleStatus("timeout")
@@ -1841,13 +1840,9 @@ class MainActivity : Activity() {
                 button.text = getString(R.string.developer_console_loading)
                 button.isEnabled = false
             }
-            "shown" -> {
-                button.text = getString(R.string.developer_console_hide)
-                button.isEnabled = true
-            }
-            "hidden" -> {
-                button.text = getString(R.string.developer_console)
-                button.isEnabled = true
+            "ready" -> {
+                button.text = getString(R.string.developer_console_ready)
+                button.isEnabled = false
             }
             else -> {
                 button.text = getString(R.string.developer_console)
