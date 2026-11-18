@@ -27,6 +27,7 @@ internal object DeveloperConsole {
                     state.visible = false;
                     state.status = 'hidden';
                 } else {
+                    window.eruda.show();
                     window.eruda.show('console');
                     state.visible = true;
                     state.status = 'shown';
@@ -68,14 +69,13 @@ internal object DeveloperConsole {
                         useShadowDom: true
                     });
 
-                    var entryButton = window.eruda.get('entryBtn');
-                    if (entryButton && typeof entryButton.hide === 'function') {
-                        entryButton.hide();
-                    }
+                    // Open the panel explicitly, then select the Console tool.
+                    // Keep Eruda's floating entry button visible as an alternate entry point.
+                    window.eruda.show();
+                    window.eruda.show('console');
 
                     state.initialized = true;
                     state.visible = true;
-                    window.eruda.show('console');
                     state.status = 'shown';
                 } catch (error) {
                     state.initialized = false;
