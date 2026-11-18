@@ -40,6 +40,28 @@ class ZipGameImporterTest {
     }
 
     @Test
+    fun publishesReplacementContentsUnderExistingLibraryIdentifier() {
+        withTemporaryDirectory { directory ->
+            val games = File(directory, "games")
+            val importer = ZipGameImporter(games)
+            val staged = importer.extract(
+                zipOf("replacement/index.html" to "<html>replacement</html>"),
+                "replacement.zip"
+            )
+
+            try {
+                val published = staged.publish(games, "existing-library-id")
+                assertEquals("existing-library-id", published.name)
+                assertTrue(File(published, "replacement/index.html").isFile)
+                assertFalse(staged.stagingDirectory.exists())
+                assertTrue(staged.cleanup() == Unit)
+            } finally {
+                staged.cleanup()
+            }
+        }
+    }
+
+    @Test
     fun rejectsTraversalAndCleansStagingDirectory() {
         withTemporaryDirectory { directory ->
             val games = File(directory, "games")

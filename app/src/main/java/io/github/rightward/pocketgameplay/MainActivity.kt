@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     private var currentWebViewProfile: String? = null
     private var librarySortOrder = LibrarySortOrder.NAME
     private var pendingFolderReconnect: LibraryGame? = null
+    private var pendingZipReplacement: LibraryGame? = null
     private var developerConsoleButton: Button? = null
     private var playerControlsButton: Button? = null
     private var playerControlsPanel: LinearLayout? = null
@@ -549,6 +550,139 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun requestZipReplacement(game: LibraryGame) {
+        pendingZipReplacement = game
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
+            )
+        }
+        try {
+            startActivityForResult(intent, REQUEST_ZIP_REPLACEMENT)
+        } catch (_: Exception) {
+            pendingZipReplacement = null
+            showHome("No file picker is available.")
+        }
+    }
+
+    private fun replaceImportedGameArchive(game: LibraryGame, uri: Uri) {
+        if (game.storageType != LibraryStorageType.IMPORTED) {
+            showHome("Only imported ZIP games can be replaced this way.")
+            return
+        }
+        val archiveName = displayNameFor(uri)
+        showHome("Importing replacement for " + game.title + "…")
+
+        worker.execute {
+            var staged: StagedGame? = null
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Android could not open the selected archive.")
+                staged = zipImporter.extract(input, archiveName)
+                val root = File(staged.stagingDirectory, staged.rootPath)
+                val entries = GameEntryPointScanner.scan(DocumentFile.fromFile(root))
+                if (entries.isEmpty()) {
+                    throw IOException("The replacement archive does not contain an HTML or HTM file.")
+                }
+
+                val completedStage = staged
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) {
+                        completedStage.cleanup()
+                    } else {
+                        chooseZipReplacementEntryPoint(game, completedStage, entries)
+                    }
+                }
+            } catch (exception: Exception) {
+                staged?.cleanup()
+                val reason = exception.message ?: "Unknown import error."
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed) {
+                        showHome("Replacement failed: " + reason)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun chooseZipReplacementEntryPoint(
+        game: LibraryGame,
+        staged: StagedGame,
+        entries: List<HtmlEntryPoint>
+    ) {
+        if (entries.size == 1) {
+            finishZipReplacement(game, staged, entries.first())
+            return
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Choose the replacement game's start page")
+            .setItems(entries.map { it.relativePath }.toTypedArray()) { _, selected ->
+                finishZipReplacement(game, staged, entries[selected])
+            }
+            .setNegativeButton("Cancel") { _, _ -> staged.cleanup() }
+            .create()
+        dialog.setOnCancelListener { staged.cleanup() }
+        dialog.show()
+    }
+
+    private fun finishZipReplacement(
+        game: LibraryGame,
+        staged: StagedGame,
+        entryPoint: HtmlEntryPoint
+    ) {
+        val base = gamesDirectory.canonicalFile
+        val destination = File(base, game.directoryName).canonicalFile
+        if (!destination.path.startsWith(base.path + File.separator) ||
+            game.directoryName != game.id
+        ) {
+            staged.cleanup()
+            showHome("The imported game's storage identifier is invalid.")
+            return
+        }
+
+        val backup = File(base, ".backup-" + game.id + "-" + System.nanoTime())
+        var movedOriginal = false
+        val profileName = game.browserProfile
+        try {
+            if (currentWebViewProfile == profileName && profileName.isNotBlank()) {
+                destroyWebView()
+            }
+            if (destination.exists()) {
+                if (!destination.renameTo(backup)) {
+                    throw IOException("Could not protect the previous imported files before replacement.")
+                }
+                movedOriginal = true
+            }
+
+            staged.publish(gamesDirectory, game.directoryName)
+            val updated = game.copy(
+                rootPath = staged.rootPath,
+                entryPoint = entryPoint.relativePath
+            )
+            if (!libraryStore.update(updated)) {
+                throw IOException("The library entry no longer exists.")
+            }
+
+            if (movedOriginal) backup.deleteRecursively()
+            showHome("Game files replaced. The library identity and isolated save data were retained.")
+        } catch (exception: Exception) {
+            val newDirectory = File(base, game.directoryName)
+            if (newDirectory.exists()) newDirectory.deleteRecursively()
+            val restored = !movedOriginal || !backup.exists() || backup.renameTo(destination)
+            staged.cleanup()
+            val detail = if (restored) {
+                exception.message ?: "Unknown replacement error."
+            } else {
+                "Replacement failed and the previous files remain in " + backup.name + "."
+            }
+            showHome("Could not replace the game: " + detail)
+        }
+    }
+
     private fun chooseGameFolder() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
@@ -589,6 +723,14 @@ class MainActivity : Activity() {
                 pendingFolderReconnect = null
                 if (resultCode == RESULT_OK && game != null && data?.data != null) {
                     reconnectFolderGame(game, data.data!!, data.flags)
+                }
+                return
+            }
+            REQUEST_ZIP_REPLACEMENT -> {
+                val game = pendingZipReplacement
+                pendingZipReplacement = null
+                if (resultCode == RESULT_OK && game != null && data?.data != null) {
+                    replaceImportedGameArchive(game, data.data!!)
                 }
                 return
             }
@@ -685,9 +827,11 @@ class MainActivity : Activity() {
                 storageType = LibraryStorageType.FOLDER,
                 sourceUri = uriValue,
                 originKey = originKey,
-                browserProfile = GameBrowserProfile.forGameId(
-                    FolderGameId.create(uriValue, entryPoint.relativePath)
-                )
+                browserProfile = if (supportsPerGameProfiles()) {
+                    GameBrowserProfile.forGameId(FolderGameId.create(uriValue, entryPoint.relativePath))
+                } else {
+                    ""
+                }
             )
             libraryStore.add(game)
             openGame(root, entryPoint, game)
@@ -779,7 +923,11 @@ class MainActivity : Activity() {
                 entryPoint = entryPoint.relativePath,
                 importedAtEpochMillis = System.currentTimeMillis(),
                 originKey = staged.id,
-                browserProfile = GameBrowserProfile.forGameId(staged.id)
+                browserProfile = if (supportsPerGameProfiles()) {
+                    GameBrowserProfile.forGameId(staged.id)
+                } else {
+                    ""
+                }
             )
             libraryStore.add(game)
 
@@ -1701,5 +1849,6 @@ class MainActivity : Activity() {
         private const val REQUEST_GAME_FILE_PICKER = 43
         private const val REQUEST_GAME_DOWNLOAD = 44
         private const val REQUEST_FOLDER_RECONNECT = 45
+        private const val REQUEST_ZIP_REPLACEMENT = 46
     }
 }
