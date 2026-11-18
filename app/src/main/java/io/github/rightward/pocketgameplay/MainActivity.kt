@@ -69,6 +69,7 @@ class MainActivity : Activity() {
     private var pendingFolderReconnect: LibraryGame? = null
     private var pendingZipReplacement: LibraryGame? = null
     private var developerConsoleButton: Button? = null
+    private var developerConsolePoll: Runnable? = null
     private var playerControlsButton: Button? = null
     private var playerControlsPanel: LinearLayout? = null
     private var controlsExpanded = false
@@ -118,6 +119,7 @@ class MainActivity : Activity() {
     }
 
     private fun showHome(message: String? = null) {
+        cancelDeveloperConsolePolling()
         libraryExitConfirmation.reset()
         cancelPendingFileChooser()
         currentGameAssetHost = null
@@ -1202,6 +1204,7 @@ class MainActivity : Activity() {
     }
 
     private fun destroyWebView() {
+        cancelDeveloperConsolePolling()
         webView?.let { view ->
             view.stopLoading()
             (view.parent as? ViewGroup)?.removeView(view)
@@ -1436,13 +1439,22 @@ class MainActivity : Activity() {
                 mainHandler.post {
                     if (webView === player) {
                         cancelPendingFileChooser()
-                        developerConsoleButton?.isEnabled = false
+                        cancelDeveloperConsolePolling()
+                        developerConsoleButton?.apply {
+                            text = getString(R.string.developer_console)
+                            isEnabled = false
+                        }
                     }
                 }
             },
             onPageFinished = {
                 mainHandler.post {
-                    if (webView === player) developerConsoleButton?.isEnabled = true
+                    if (webView === player) {
+                        developerConsoleButton?.apply {
+                            text = getString(R.string.developer_console)
+                            isEnabled = true
+                        }
+                    }
                 }
             },
             onRendererGone = {
@@ -1750,6 +1762,104 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun toggleDeveloperConsole(player: WebView) {
+        val button = developerConsoleButton ?: return
+        if (webView !== player) return
+
+        cancelDeveloperConsolePolling()
+        button.isEnabled = false
+        player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT) { result ->
+            if (webView !== player || developerConsoleButton !== button) return@evaluateJavascript
+
+            when (developerConsoleStatus(result)) {
+                "loading" -> {
+                    applyDeveloperConsoleStatus("loading")
+                    pollDeveloperConsoleStatus(player)
+                }
+                "shown" -> applyDeveloperConsoleStatus("shown")
+                "hidden" -> applyDeveloperConsoleStatus("hidden")
+                "load_error" -> applyDeveloperConsoleStatus("load_error")
+                "init_error" -> applyDeveloperConsoleStatus("init_error")
+                "timeout" -> applyDeveloperConsoleStatus("timeout")
+                else -> applyDeveloperConsoleStatus("execution_error")
+            }
+        }
+    }
+
+    private fun pollDeveloperConsoleStatus(player: WebView) {
+        cancelDeveloperConsolePolling()
+        var attemptsRemaining = DEVELOPER_CONSOLE_POLL_ATTEMPTS
+        lateinit var poll: Runnable
+        poll = Runnable {
+            if (webView !== player || developerConsoleButton == null) {
+                developerConsolePoll = null
+                return@Runnable
+            }
+
+            player.evaluateJavascript(DeveloperConsole.STATUS_SCRIPT) { result ->
+                if (webView !== player || developerConsoleButton == null) {
+                    developerConsolePoll = null
+                    return@evaluateJavascript
+                }
+
+                val status = developerConsoleStatus(result)
+                if (status == "loading" && attemptsRemaining > 0) {
+                    attemptsRemaining--
+                    mainHandler.postDelayed(poll, DEVELOPER_CONSOLE_POLL_INTERVAL_MS)
+                } else {
+                    developerConsolePoll = null
+                    applyDeveloperConsoleStatus(
+                        if (status == "loading" || status == null) "timeout" else status
+                    )
+                }
+            }
+        }
+        developerConsolePoll = poll
+        mainHandler.post(poll)
+    }
+
+    private fun cancelDeveloperConsolePolling() {
+        developerConsolePoll?.let(mainHandler::removeCallbacks)
+        developerConsolePoll = null
+    }
+
+    private fun developerConsoleStatus(result: String?): String? {
+        return result?.trim()?.removeSurrounding("\"")
+    }
+
+    private fun applyDeveloperConsoleStatus(status: String) {
+        val button = developerConsoleButton ?: return
+        when (status) {
+            "loading" -> {
+                button.text = getString(R.string.developer_console_loading)
+                button.isEnabled = false
+            }
+            "shown" -> {
+                button.text = getString(R.string.developer_console_hide)
+                button.isEnabled = true
+            }
+            "hidden" -> {
+                button.text = getString(R.string.developer_console)
+                button.isEnabled = true
+            }
+            else -> {
+                button.text = getString(R.string.developer_console)
+                button.isEnabled = webView != null
+                val message = when (status) {
+                    "load_error" ->
+                        "Dev console asset could not load. The bundled Eruda file or local asset route may be missing."
+                    "init_error" ->
+                        "Eruda loaded but could not initialize. Reload the game and try again."
+                    "timeout" ->
+                        "Dev console timed out loading its local asset. Reload the game and try again."
+                    else ->
+                        "Dev console did not respond. Reload the game and try again."
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun createPlayerControls(player: WebView) {
         val controlsButton = Button(this).apply {
             text = getString(R.string.player_controls)
@@ -1804,7 +1914,7 @@ class MainActivity : Activity() {
         addAction(R.string.toggle_fullscreen) { enterImmersiveFullscreen() }
 
         developerConsoleButton = addAction(R.string.developer_console) {
-            player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT, null)
+            toggleDeveloperConsole(player)
         }.apply {
             contentDescription = getString(R.string.developer_console_description)
             isEnabled = false
@@ -1970,5 +2080,7 @@ class MainActivity : Activity() {
         private const val REQUEST_GAME_DOWNLOAD = 44
         private const val REQUEST_FOLDER_RECONNECT = 45
         private const val REQUEST_ZIP_REPLACEMENT = 46
+        private const val DEVELOPER_CONSOLE_POLL_ATTEMPTS = 80
+        private const val DEVELOPER_CONSOLE_POLL_INTERVAL_MS = 200L
     }
 }
