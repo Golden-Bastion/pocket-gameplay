@@ -31,7 +31,7 @@ class BoundedInputStreamTest {
         val stream = BoundedInputStream(ByteArrayInputStream(byteArrayOf(1, 2, 3, 4)), 3)
         assertEquals(0, stream.read(ByteArray(1), 0, 0))
         assertEquals(2, stream.skip(2))
-        assertEquals(1, stream.read())
+        assertEquals(3, stream.read())
         assertEquals(-1, stream.read())
     }
 
