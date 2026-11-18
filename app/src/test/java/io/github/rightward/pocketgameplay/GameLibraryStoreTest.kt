@@ -49,50 +49,59 @@ class GameLibraryStoreTest {
             assertEquals("legacy-id", game.id)
             assertEquals(LibraryStorageType.IMPORTED, game.storageType)
             assertEquals("", game.sourceUri)
-
-            val folderUri = "content://provider/tree/new-game"
-            val entryPoint = "Game Start.html"
-            GameLibraryStore(metadata).add(
-                LibraryGame(
-                    id = FolderGameId.create(folderUri, entryPoint),
-                    title = "New folder game",
-                    directoryName = "",
-                    rootPath = "",
-                    entryPoint = entryPoint,
-                    importedAtEpochMillis = 2000L,
-                    storageType = LibraryStorageType.FOLDER,
-                    sourceUri = folderUri
-                )
-            )
-
-            val migratedGames = GameLibraryStore(metadata).all()
-            assertEquals(2, migratedGames.size)
-            assertEquals("legacy-id", migratedGames.first().id)
-            val migratedProperties = Properties()
-            metadata.inputStream().use { migratedProperties.load(it) }
-            assertEquals("2", migratedProperties.getProperty("version"))
+            assertEquals("", game.browserProfile)
         }
     }
 
     @Test
-    fun rejectsFolderRecordWithMismatchedDeterministicId() {
+    fun readsVersionTwoFolderShortcutsAndMigratesOnNextWrite() {
+        withTemporaryDirectory { directory ->
+            val metadata = File(directory, "library.properties")
+            val folderUri = "content://provider/tree/new-game"
+            val entryPoint = "Game Start.html"
+            val folderId = FolderGameId.create(folderUri, entryPoint)
+            val properties = Properties().apply {
+                setProperty("version", "2")
+                setProperty("count", "1")
+                setProperty("game.0.id", folderId)
+                setProperty("game.0.title", "Legacy folder")
+                setProperty("game.0.directory", "")
+                setProperty("game.0.root", "")
+                setProperty("game.0.entry", entryPoint)
+                setProperty("game.0.importedAt", "1000")
+                setProperty("game.0.storageType", LibraryStorageType.FOLDER)
+                setProperty("game.0.sourceUri", folderUri)
+            }
+            metadata.outputStream().use { properties.store(it, "Version two fixture") }
+
+            val store = GameLibraryStore(metadata)
+            assertEquals(folderId, store.all().single().id)
+            store.rename(folderId, "Renamed folder")
+
+            val migratedProperties = Properties()
+            metadata.inputStream().use { migratedProperties.load(it) }
+            assertEquals("3", migratedProperties.getProperty("version"))
+        }
+    }
+
+    @Test
+    fun rejectsFolderRecordWithInvalidStorageFields() {
         withTemporaryDirectory { directory ->
             val store = GameLibraryStore(File(directory, "library.properties"))
-            val folderUri = "content://provider/tree/game"
             val game = LibraryGame(
-                id = "not-the-folder-id",
+                id = "folder-id",
                 title = "Invalid folder game",
-                directoryName = "",
+                directoryName = "not-empty",
                 rootPath = "",
                 entryPoint = "index.html",
                 importedAtEpochMillis = 100L,
                 storageType = LibraryStorageType.FOLDER,
-                sourceUri = folderUri
+                sourceUri = "content://provider/tree/game"
             )
 
             try {
                 store.add(game)
-                throw AssertionError("Expected folder identifier validation failure.")
+                throw AssertionError("Expected folder storage validation failure.")
             } catch (expected: java.io.IOException) {
                 assertTrue(store.all().isEmpty())
             }
@@ -100,28 +109,55 @@ class GameLibraryStoreTest {
     }
 
     @Test
-    fun storesFolderReferencesInVersionTwoMetadata() {
+    fun renameChangesOnlyDisplayTitle() {
         withTemporaryDirectory { directory ->
-            val metadata = File(directory, "library.properties")
-            val folderUri = "content://provider/tree/folder"
-            val entryPoint = "Start Page.html"
-            val folderGame = LibraryGame(
-                id = FolderGameId.create(folderUri, entryPoint),
-                title = "My downloaded game",
+            val store = GameLibraryStore(File(directory, "library.properties"))
+            val original = sampleImportedGame("renamed")
+            store.add(original)
+
+            assertTrue(store.rename(original.id, "  Better title  "))
+
+            val renamed = store.all().single()
+            assertEquals("Better title", renamed.title)
+            assertEquals(original.id, renamed.id)
+            assertEquals(original.directoryName, renamed.directoryName)
+            assertEquals(original.rootPath, renamed.rootPath)
+            assertEquals(original.entryPoint, renamed.entryPoint)
+            assertEquals(original.originKey, renamed.originKey)
+            assertEquals(original.browserProfile, renamed.browserProfile)
+            assertFalse(store.rename("missing", "No game"))
+        }
+    }
+
+    @Test
+    fun folderPermissionCanBeReboundWithoutChangingGameOrOriginIdentity() {
+        withTemporaryDirectory { directory ->
+            val store = GameLibraryStore(File(directory, "library.properties"))
+            val oldUri = "content://provider/tree/old"
+            val newUri = "content://provider/tree/reselected"
+            val entryPoint = "start/index.html"
+            val original = LibraryGame(
+                id = FolderGameId.create(oldUri, entryPoint),
+                title = "Folder game",
                 directoryName = "",
                 rootPath = "",
                 entryPoint = entryPoint,
                 importedAtEpochMillis = 1234L,
                 storageType = LibraryStorageType.FOLDER,
-                sourceUri = folderUri
+                sourceUri = oldUri,
+                originKey = GameOrigin.forFolderUri(oldUri),
+                browserProfile = GameBrowserProfile.forGameId(FolderGameId.create(oldUri, entryPoint))
             )
+            store.add(original)
 
-            GameLibraryStore(metadata).add(folderGame)
+            val rebound = original.copy(sourceUri = newUri)
+            assertTrue(store.update(rebound))
 
-            assertEquals(listOf(folderGame), GameLibraryStore(metadata).all())
-            val properties = Properties()
-            metadata.inputStream().use { properties.load(it) }
-            assertEquals("2", properties.getProperty("version"))
+            val saved = store.all().single()
+            assertEquals(original.id, saved.id)
+            assertEquals(original.originKey, saved.originKey)
+            assertEquals(original.browserProfile, saved.browserProfile)
+            assertEquals(newUri, saved.sourceUri)
         }
     }
 
@@ -129,8 +165,8 @@ class GameLibraryStoreTest {
     fun replacesMatchingIdAndRemovesOnlySelectedGame() {
         withTemporaryDirectory { directory ->
             val store = GameLibraryStore(File(directory, "library.properties"))
-            val first = sampleGame("one")
-            val second = sampleGame("two")
+            val first = sampleImportedGame("one")
+            val second = sampleImportedGame("two")
 
             store.add(first)
             store.add(second)
@@ -144,13 +180,30 @@ class GameLibraryStoreTest {
         }
     }
 
-    private fun sampleGame(id: String) = LibraryGame(
+    @Test
+    fun rejectsAnInvalidBrowserProfileName() {
+        withTemporaryDirectory { directory ->
+            val store = GameLibraryStore(File(directory, "library.properties"))
+            val game = sampleImportedGame("profile").copy(browserProfile = "shared-profile")
+
+            try {
+                store.add(game)
+                throw AssertionError("Expected profile identity validation failure.")
+            } catch (expected: java.io.IOException) {
+                assertTrue(store.all().isEmpty())
+            }
+        }
+    }
+
+    private fun sampleImportedGame(id: String) = LibraryGame(
         id = id,
         title = id,
         directoryName = id,
         rootPath = "",
         entryPoint = "index.html",
-        importedAtEpochMillis = 100L
+        importedAtEpochMillis = 100L,
+        originKey = id,
+        browserProfile = GameBrowserProfile.forGameId(id)
     )
 
     private fun withTemporaryDirectory(block: (File) -> Unit) {

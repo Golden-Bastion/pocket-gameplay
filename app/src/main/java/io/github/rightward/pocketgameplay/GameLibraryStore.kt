@@ -16,7 +16,11 @@ data class LibraryGame(
     val entryPoint: String,
     val importedAtEpochMillis: Long,
     val storageType: String = LibraryStorageType.IMPORTED,
-    val sourceUri: String = ""
+    val sourceUri: String = "",
+    /** Stable origin key retained when a folder permission is renewed with a new URI. */
+    val originKey: String = "",
+    /** Empty for records that still use the pre-isolation default WebView profile. */
+    val browserProfile: String = ""
 )
 
 object LibraryStorageType {
@@ -25,10 +29,10 @@ object LibraryStorageType {
 }
 
 /**
- * Small file-backed registry for imported games.
+ * File-backed registry for imported games and folder shortcuts.
  *
- * Game content itself lives in a separate app-private directory. The registry only stores
- * stable identifiers and relative paths; callers must still validate those paths before use.
+ * Game content is stored separately. The registry stores stable identifiers and relative paths;
+ * callers must validate those paths again before use.
  */
 class GameLibraryStore(private val metadataFile: File) {
     @Synchronized
@@ -39,6 +43,38 @@ class GameLibraryStore(private val metadataFile: File) {
         validate(game)
         val games = readGames().filterNot { it.id == game.id } + game
         writeGames(games)
+    }
+
+    /** Replaces metadata for an existing ID without changing that ID or its storage identity. */
+    @Synchronized
+    fun update(game: LibraryGame): Boolean {
+        validate(game)
+        val games = readGames().toMutableList()
+        val index = games.indexOfFirst { it.id == game.id }
+        if (index < 0) return false
+
+        games[index] = game
+        writeGames(games)
+        return true
+    }
+
+    /** Changes only the user-facing title; storage paths, ID and browser-data keys stay intact. */
+    @Synchronized
+    fun rename(id: String, title: String): Boolean {
+        val normalizedTitle = title.trim()
+        if (normalizedTitle.isBlank()) {
+            throw IOException("A game title cannot be empty.")
+        }
+
+        val games = readGames().toMutableList()
+        val index = games.indexOfFirst { it.id == id }
+        if (index < 0) return false
+
+        val renamed = games[index].copy(title = normalizedTitle)
+        validate(renamed)
+        games[index] = renamed
+        writeGames(games)
+        return true
     }
 
     @Synchronized
@@ -82,16 +118,34 @@ class GameLibraryStore(private val metadataFile: File) {
                     ?: throw IOException("Game library metadata contains an invalid import time."),
                 storageType = properties.getProperty(prefix + "storageType")
                     ?: LibraryStorageType.IMPORTED,
-                sourceUri = properties.getProperty(prefix + "sourceUri", "")
+                sourceUri = properties.getProperty(prefix + "sourceUri", ""),
+                originKey = properties.getProperty(prefix + "originKey", ""),
+                browserProfile = properties.getProperty(prefix + "browserProfile", "")
             ).also(::validate)
         }
     }
 
     private fun validate(game: LibraryGame) {
-        if (game.id.isBlank() || game.title.isBlank() ||
+        if (game.id.isBlank() ||
+            game.id == "." ||
+            game.id == ".." ||
+            File(game.id).name != game.id ||
+            game.title.isBlank() ||
             RelativeGamePath.parse(game.entryPoint) == null
         ) {
             throw IOException("Game library metadata contains invalid required fields.")
+        }
+
+        if (game.originKey.isNotEmpty() &&
+            game.originKey.any { !it.isLetterOrDigit() && it != '-' }
+        ) {
+            throw IOException("Game library metadata contains an invalid origin key.")
+        }
+
+        if (game.browserProfile.isNotEmpty() &&
+            game.browserProfile != GameBrowserProfile.forGameId(game.id)
+        ) {
+            throw IOException("Game library metadata contains an invalid browser profile.")
         }
 
         when (game.storageType) {
@@ -109,8 +163,7 @@ class GameLibraryStore(private val metadataFile: File) {
             LibraryStorageType.FOLDER -> {
                 if (game.directoryName.isNotEmpty() ||
                     game.rootPath.isNotEmpty() ||
-                    !game.sourceUri.startsWith("content://") ||
-                    game.id != FolderGameId.create(game.sourceUri, game.entryPoint)
+                    !game.sourceUri.startsWith("content://")
                 ) {
                     throw IOException("Folder game metadata contains an invalid folder reference.")
                 }
@@ -143,6 +196,8 @@ class GameLibraryStore(private val metadataFile: File) {
                 setProperty(prefix + "importedAt", game.importedAtEpochMillis.toString())
                 setProperty(prefix + "storageType", game.storageType)
                 setProperty(prefix + "sourceUri", game.sourceUri)
+                setProperty(prefix + "originKey", game.originKey)
+                setProperty(prefix + "browserProfile", game.browserProfile)
             }
         }
 
@@ -177,7 +232,7 @@ class GameLibraryStore(private val metadataFile: File) {
         private const val KEY_VERSION = "version"
         private const val KEY_COUNT = "count"
         private const val MIN_SUPPORTED_VERSION = 1
-        private const val FORMAT_VERSION = 2
+        private const val FORMAT_VERSION = 3
         private const val MAX_LIBRARY_ITEMS = 10_000
     }
 }
