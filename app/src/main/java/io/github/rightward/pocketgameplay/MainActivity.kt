@@ -65,6 +65,8 @@ class MainActivity : Activity() {
     private lateinit var gamesDirectory: File
     private lateinit var zipImporter: ZipGameImporter
     private lateinit var libraryStore: GameLibraryStore
+    private lateinit var faviconCache: GameFaviconCache
+    private val faviconLoadAttempted = mutableSetOf<String>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
@@ -118,6 +120,7 @@ class MainActivity : Activity() {
         gamesDirectory = File(filesDir, "games")
         zipImporter = ZipGameImporter(gamesDirectory)
         libraryStore = GameLibraryStore(File(filesDir, "library.properties"))
+        faviconCache = GameFaviconCache(File(filesDir, "game-icons"), contentResolver)
         cleanInterruptedImports()
 
         pathHandler = GamePathHandler(contentResolver)
@@ -313,20 +316,6 @@ class MainActivity : Activity() {
         }
         page.addView(results, matchWidthWrapContent())
 
-        fun addAction(row: LinearLayout, label: String, action: () -> Unit) {
-            row.addView(Button(this).apply {
-                text = label
-                isAllCaps = false
-                textSize = 12f
-                minWidth = 0
-                minHeight = dp(46)
-                setPadding(dp(4), 0, dp(4), 0)
-                setOnClickListener { action() }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
-                marginEnd = dp(3)
-            })
-        }
-
         renderGames = render@{
             results.removeAllViews()
             val filtered = LibraryGameCatalog.filterAndSort(
@@ -348,77 +337,164 @@ class MainActivity : Activity() {
                 val problem = libraryGameProblem(game)
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    setPadding(dp(10), dp(10), dp(10), dp(10))
                     setBackgroundResource(R.drawable.bg_library_card)
                 }
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val gameIcon = ImageView(this).apply {
+                    contentDescription = game.title
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackgroundColor(getColor(R.color.pg_icon_background))
+                    setImageResource(R.drawable.ic_pocket_gameplay_mark)
+                }
+                row.addView(gameIcon, LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+                    marginEnd = dp(10)
+                })
+                faviconCache.load(game.id)?.let(gameIcon::setImageBitmap)
+                    ?: scheduleFaviconLoad(game, gameIcon)
 
-                card.addView(TextView(this).apply {
+                val details = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                details.addView(TextView(this).apply {
                     text = game.title
-                    textSize = 17f
+                    textSize = 15f
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                     setTextColor(getColor(R.color.pg_text_primary))
                 }, matchWidthWrapContent())
 
                 val storageLabel = if (game.storageType == LibraryStorageType.FOLDER) {
-                    "Folder shortcut"
+                    "Folder"
                 } else {
-                    "Imported ZIP copy"
+                    "Imported"
                 }
-                card.addView(TextView(this).apply {
-                    text = storageLabel + " · Start page: " + game.entryPoint
-                    textSize = 12f
+                details.addView(TextView(this).apply {
+                    text = storageLabel + " · " + game.entryPoint
+                    textSize = 11f
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.MIDDLE
                     setTextColor(getColor(R.color.pg_text_secondary))
-                    setPadding(0, dp(4), 0, dp(6))
+                    setPadding(0, dp(3), 0, 0)
                 }, matchWidthWrapContent())
-
                 if (problem != null) {
-                    card.addView(TextView(this).apply {
+                    details.addView(TextView(this).apply {
                         text = problem
-                        textSize = 12f
+                        textSize = 10f
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
                         setTextColor(getColor(R.color.pg_warning))
-                        setPadding(0, 0, 0, dp(8))
+                        setPadding(0, dp(2), 0, 0)
                     }, matchWidthWrapContent())
                 }
+                row.addView(
+                    details,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                )
 
-                val primaryActions = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
+                val primaryLabel = when {
+                    problem == null -> "Play"
+                    game.storageType == LibraryStorageType.FOLDER -> "Reconnect"
+                    else -> "Update ZIP"
                 }
-                if (problem == null) {
-                    addAction(primaryActions, "Play") { playLibraryGame(game) }
-                } else if (game.storageType == LibraryStorageType.FOLDER) {
-                    addAction(primaryActions, "Reconnect") { requestFolderReconnect(game) }
-                }
-                if (LibraryGameCatalog.supportsZipReplacement(game)) {
-                    addAction(primaryActions, "Update ZIP") { requestZipReplacement(game) }
-                }
-                addAction(primaryActions, "Rename") { renameLibraryGame(game) }
-                addAction(primaryActions, "Details") { showGameDetails(game) }
-                card.addView(primaryActions, matchWidthWrapContent())
-
-                val secondaryActions = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                }
-                val dataActionLabel = when {
-                    game.browserProfile.isBlank() && supportsPerGameProfiles() -> "Isolate saves"
-                    game.browserProfile.isNotBlank() && supportsPerGameProfiles() -> "Clear data"
-                    else -> "Data reset unavailable"
-                }
-                addAction(secondaryActions, dataActionLabel) {
-                    when {
-                        !supportsPerGameProfiles() -> isolateGameSaves(game)
-                        game.browserProfile.isBlank() -> isolateGameSaves(game)
-                        else -> confirmClearGameData(game)
+                val primaryButton = Button(this).apply {
+                    text = primaryLabel
+                    isAllCaps = false
+                    textSize = 12f
+                    minWidth = 0
+                    minHeight = dp(40)
+                    setPadding(dp(8), 0, dp(8), 0)
+                    setOnClickListener {
+                        when (primaryLabel) {
+                            "Play" -> playLibraryGame(game)
+                            "Reconnect" -> requestFolderReconnect(game)
+                            "Update ZIP" -> requestZipReplacement(game)
+                        }
                     }
                 }
-                addAction(secondaryActions, "Remove") { confirmRemoveGame(game) }
-                card.addView(secondaryActions, matchWidthWrapContent())
+                row.addView(
+                    primaryButton,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(42)
+                    ).apply {
+                        marginStart = dp(6)
+                    }
+                )
 
+                val moreButton = ImageButton(this).apply {
+                    setImageResource(R.drawable.ic_library_more)
+                    setColorFilter(getColor(R.color.pg_text_secondary))
+                    contentDescription = getString(R.string.library_game_more_options)
+                    scaleType = ImageView.ScaleType.CENTER
+                    isFocusable = true
+                    isClickable = true
+                    val selectableBackground = android.util.TypedValue()
+                    if (theme.resolveAttribute(
+                            android.R.attr.selectableItemBackgroundBorderless,
+                            selectableBackground,
+                            true
+                        )
+                    ) {
+                        setBackgroundResource(selectableBackground.resourceId)
+                    }
+                    setOnClickListener {
+                        val popup = PopupMenu(this@MainActivity, this)
+                        fun addMenuAction(label: String, action: () -> Unit) {
+                            popup.menu.add(label).setOnMenuItemClickListener {
+                                action()
+                                true
+                            }
+                        }
+
+                        if (LibraryGameCatalog.supportsZipReplacement(game) &&
+                            primaryLabel != "Update ZIP"
+                        ) {
+                            addMenuAction("Update ZIP") { requestZipReplacement(game) }
+                        }
+                        if (game.storageType == LibraryStorageType.FOLDER &&
+                            primaryLabel != "Reconnect"
+                        ) {
+                            addMenuAction("Reconnect folder") { requestFolderReconnect(game) }
+                        }
+                        addMenuAction("Rename") { renameLibraryGame(game) }
+                        addMenuAction("Details") { showGameDetails(game) }
+
+                        val dataActionLabel = when {
+                            game.browserProfile.isBlank() && supportsPerGameProfiles() -> "Isolate saves"
+                            game.browserProfile.isNotBlank() && supportsPerGameProfiles() -> "Clear data"
+                            else -> "Data reset unavailable"
+                        }
+                        addMenuAction(dataActionLabel) {
+                            when {
+                                !supportsPerGameProfiles() -> isolateGameSaves(game)
+                                game.browserProfile.isBlank() -> isolateGameSaves(game)
+                                else -> confirmClearGameData(game)
+                            }
+                        }
+                        addMenuAction("Remove") { confirmRemoveGame(game) }
+                        popup.show()
+                    }
+                }
+                row.addView(
+                    moreButton,
+                    LinearLayout.LayoutParams(dp(40), dp(48)).apply {
+                        marginStart = dp(2)
+                    }
+                )
+
+                card.addView(row, matchWidthWrapContent())
                 results.addView(
                     card,
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        bottomMargin = dp(10)
+                        bottomMargin = dp(8)
                     }
                 )
             }
@@ -432,6 +508,45 @@ class MainActivity : Activity() {
             override fun afterTextChanged(editable: Editable?) = Unit
         })
         renderGames()
+    }
+
+    private fun scheduleFaviconLoad(game: LibraryGame, target: ImageView) {
+        if (!faviconLoadAttempted.add(game.id)) return
+
+        try {
+            worker.execute {
+                val bitmap = runCatching {
+                    val root = when (game.storageType) {
+                        LibraryStorageType.IMPORTED ->
+                            DocumentFile.fromFile(resolveGameRoot(game))
+                        LibraryStorageType.FOLDER -> {
+                            val uri = Uri.parse(game.sourceUri)
+                            if (hasFolderReadGrant(uri)) DocumentFile.fromTreeUri(this, uri) else null
+                        }
+                        else -> null
+                    }
+                    if (root != null) faviconCache.refresh(game.id, root, game.entryPoint)
+                    faviconCache.load(game.id)
+                }.getOrNull()
+
+                mainHandler.post {
+                    if (bitmap != null) {
+                        if (target.parent != null) {
+                            target.setImageBitmap(bitmap)
+                        } else {
+                            bitmap.recycle()
+                        }
+                    }
+                }
+            }
+        } catch (_: RuntimeException) {
+            faviconLoadAttempted.remove(game.id)
+        }
+    }
+
+    private fun invalidateGameFavicon(gameId: String) {
+        faviconCache.remove(gameId)
+        faviconLoadAttempted.remove(gameId)
     }
 
     private fun hasFolderReadGrant(uri: Uri): Boolean {
@@ -612,6 +727,7 @@ class MainActivity : Activity() {
             if (!libraryStore.update(updated)) {
                 throw IOException("The library entry no longer exists.")
             }
+            invalidateGameFavicon(game.id)
             if (originalUri != treeUri) releaseFolderGrantIfUnused(originalUri)
             showHome("Folder access restored. This game's saved browser data was retained.")
         } catch (exception: Exception) {
@@ -735,6 +851,7 @@ class MainActivity : Activity() {
             if (!libraryStore.update(updated)) {
                 throw IOException("The library entry no longer exists.")
             }
+            invalidateGameFavicon(game.id)
 
             if (movedOriginal) backup.deleteRecursively()
             showHome("Game files replaced. The library identity and isolated save data were retained.")
@@ -1262,6 +1379,7 @@ class MainActivity : Activity() {
         }
 
         libraryStore.remove(game.id)
+        invalidateGameFavicon(game.id)
         val uriStillUsed = libraryStore.all().any {
             it.storageType == LibraryStorageType.FOLDER && it.sourceUri == game.sourceUri
         }
@@ -1302,6 +1420,7 @@ class MainActivity : Activity() {
         }
 
         libraryStore.remove(game.id)
+        invalidateGameFavicon(game.id)
         if (directory.exists() && !directory.deleteRecursively()) {
             showHome("The library item was removed, but some stored files could not be deleted.")
         } else {
