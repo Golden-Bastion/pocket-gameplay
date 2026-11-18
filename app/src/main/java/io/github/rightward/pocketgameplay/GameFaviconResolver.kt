@@ -1,6 +1,7 @@
 package io.github.rightward.pocketgameplay
 
 import java.net.URI
+import java.net.URLDecoder
 
 /**
  * Finds same-game-origin icon files referenced by a game's selected HTML document.
@@ -64,7 +65,10 @@ object GameFaviconResolver {
         val pathOnly = href.substringBefore('#').substringBefore('?')
         if (pathOnly.isBlank()) return null
 
-        val target = runCatching { URI(null, null, pathOnly, null) }.getOrNull() ?: return null
+        val decodedPath = runCatching {
+            URLDecoder.decode(pathOnly.replace("+", "%2B"), Charsets.UTF_8.name())
+        }.getOrNull() ?: return null
+        val target = runCatching { URI(null, null, decodedPath, null) }.getOrNull() ?: return null
         val resolved = runCatching { base.resolve(target).normalize() }.getOrNull() ?: return null
         if (resolved.isAbsolute || resolved.rawAuthority != null) return null
 
