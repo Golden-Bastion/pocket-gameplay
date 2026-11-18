@@ -1231,13 +1231,32 @@ class MainActivity : Activity() {
     }
 
     private fun cleanInterruptedImports() {
-        val storedIds = try {
-            libraryStore.all()
-                .filter { it.storageType == LibraryStorageType.IMPORTED }
-                .map { it.directoryName }
-                .toSet()
+        val storedGames = try {
+            libraryStore.all().filter { it.storageType == LibraryStorageType.IMPORTED }
         } catch (_: IOException) {
             null
+        }
+        val storedIds = storedGames?.map { it.directoryName }?.toSet()
+
+        storedGames?.forEach { game ->
+            val backupPrefix = ".backup-" + game.directoryName + "-"
+            val backups = gamesDirectory.listFiles()
+                ?.filter { it.isDirectory && it.name.startsWith(backupPrefix) }
+                .orEmpty()
+                .sortedByDescending { it.lastModified() }
+            if (backups.isNotEmpty()) {
+                val destination = File(gamesDirectory, game.directoryName)
+                val currentIsValid = runCatching { resolveGameRoot(game) }.isSuccess
+                if (currentIsValid) {
+                    backups.forEach { it.deleteRecursively() }
+                } else {
+                    val backup = backups.first()
+                    if (destination.exists()) destination.deleteRecursively()
+                    if (backup.renameTo(destination)) {
+                        backups.filterNot { it == backup }.forEach { it.deleteRecursively() }
+                    }
+                }
+            }
         }
 
         gamesDirectory.listFiles()?.forEach { directory ->

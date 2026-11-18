@@ -66,8 +66,16 @@ The game origin remains isolated from other games. Eruda's own floating entry bu
 
 The build downloads the exact Eruda 3.4.3 npm archive and checks its SHA-512 integrity before extracting the browser bundle and including its MIT notice. Runtime debugging is offline and does not add the Android INTERNET permission.
 
-## Library records
+## Library records and browser data
 
-The library can contain two storage types. Imported games point to an app-private extracted directory. Folder-backed games store a persisted Storage Access Framework tree URI and a relative HTML entry point; they never own or delete the original directory. The versioned metadata reader continues to interpret version-1 entries as imported games while version 2 adds storage type and source URI fields.
+The version-3 library registry stores immutable game IDs, display titles, storage references, entry-point paths, origin keys, and optional named WebView profile names. Version-1 records are read as imported ZIP games and version-2 records retain their imported or folder-backed storage type; missing profile fields remain empty so existing saves continue using the legacy default profile.
 
-Folder game IDs are deterministic for a tree URI plus entry point. Different entry points in the same folder are independent shortcuts. A persisted URI read grant is released only after the last library item using that tree URI is removed.
+Imported games point to app-private extracted directories. Folder-backed games store a persisted Storage Access Framework tree URI and a relative HTML entry point; they never own or delete the original directory. Folder shortcut IDs begin as a deterministic tree-URI/entry-point pair. If Android revokes access, reconnecting the folder can rebind the shortcut to a newly granted tree URI while preserving its original library ID, origin host, and browser profile. This keeps that game's saved data associated with the same shortcut.
+
+New games receive a stable named WebView profile when the installed System WebView supports AndroidX WebKit's `MULTI_PROFILE` feature. `WebViewCompat.setProfile` is applied to a fresh WebView before configuring or navigating it. A named profile isolates browser-managed state (including cookies, web storage, and service-worker state) from profiles used by other games. Clearing or removing a named profile destroys the app's WebView for that game first, then calls `ProfileStore.deleteProfile`. WebView may finish deleting some profile data asynchronously.
+
+Older library entries are not automatically assigned new profiles. Their historical localStorage/IndexedDB data is left in the default profile. On a supporting WebView, the user can explicitly choose **Isolate saves**; this switches that game to a new empty profile without copying or deleting the old shared data. If `MULTI_PROFILE` is unsupported, new games continue on the default profile and per-game clearing/isolation is unavailable rather than risking data belonging to other games.
+
+The library's search and sort are display-only: they do not alter IDs, entry points, or storage. Renaming changes only the title. Removing an imported entry deletes its private imported copy and its named browser profile when supported. Removing a folder-backed entry deletes only the shortcut, releases its persisted read grant only after the last shortcut using that URI is removed, and never deletes the external source folder. Removing a legacy entry does not delete the shared default profile.
+
+If an imported folder is incomplete, the library offers ZIP replacement under the existing storage ID and retains the game's browser profile. The replacement flow stages the archive, then swaps the private content directory and updates its root/entry-point metadata. A leftover backup from an interrupted replacement is restored on startup when the current entry point is invalid; otherwise it is cleaned up.
