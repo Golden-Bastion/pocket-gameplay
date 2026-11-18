@@ -18,7 +18,7 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Separate local web origins for each game, isolating browser-managed storage such as `localStorage` and IndexedDB.
 - ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
 - Optional in-game developer console powered by locally bundled Eruda 3.4.3.
-- Collapsible native playback controls for returning to the library, reloading the current game, entering immersive fullscreen, and opening the developer console.
+- Fixed native player toolbar with one-tap library exit and reload actions, a visible game title, and an overflow menu for immersive fullscreen and the developer console.
 - WebView HTML fullscreen and fullscreen media custom-view handling, including restoration of window and system UI state.
 - Back navigation prioritizes closing player overlays and fullscreen modes before game history and library exit.
 - Explicit MIME handling for common HTML5 assets, including modules, WebAssembly, fonts, audio and video.
