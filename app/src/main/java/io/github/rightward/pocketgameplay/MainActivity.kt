@@ -751,7 +751,10 @@ class MainActivity : Activity() {
             assetHost = assetHost,
             onPageStarted = {
                 mainHandler.post {
-                    if (webView === player) developerConsoleButton?.isEnabled = false
+                    if (webView === player) {
+                        cancelPendingFileChooser()
+                        developerConsoleButton?.isEnabled = false
+                    }
                 }
             },
             onPageFinished = {
@@ -976,9 +979,10 @@ class MainActivity : Activity() {
             .ifBlank { source.name ?: "download" }
         val safeName = guessedName
             .substringAfterLast('/')
-            .filter { it != '\\' && it != '\u0000' }
+            .filter { it != '\\' && it != '\u0000' && it != '\r' && it != '\n' }
             .take(120)
-            .ifBlank { "download" }
+            .takeIf { it.isNotBlank() && it != "." && it != ".." }
+            ?: "download"
         val safeMimeType = mimeType
             ?.substringBefore(';')
             ?.takeIf { it.contains('/') }
