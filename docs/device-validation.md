@@ -63,6 +63,9 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 - [ ] Rotate the device while a game is running. Confirm the activity/WebView remains usable and the game is not unexpectedly returned to the library.
 - [ ] Press Android Back with the controls panel expanded; it should close the panel before leaving the game.
 - [ ] With no overlay open, use Back in a game that has navigation history; it should navigate game history before returning to the library.
+- [ ] In a SugarCube game, swipe inward from the left and right screen edges to open/close its sidebar. Confirm both gestures reach the game instead of triggering system Back.
+- [ ] Confirm system Back remains available from the unexcluded upper/lower portions of either screen edge and still follows the existing player Back priority.
+- [ ] Confirm normal taps, vertical scrolling, horizontal drags and multi-touch controls continue to work after testing edge swipes.
 - [ ] Return to the library and confirm the game entry and its browser-managed saves remain present.
 - [ ] Return from a throwaway imported game to the library, then immediately remove that entry. Confirm deletion completes without an "in-use" or locked-files error.
 - [ ] Return from an imported game to the library, then immediately replace/update its ZIP when that workflow is available. Confirm the previous WebView no longer holds the extracted files.
