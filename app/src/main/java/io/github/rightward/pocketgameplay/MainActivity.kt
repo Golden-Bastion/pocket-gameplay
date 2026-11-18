@@ -62,6 +62,7 @@ class MainActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private var currentWebViewProfile: String? = null
+    private var currentWebViewGameId: String? = null
     private var librarySortOrder = LibrarySortOrder.NAME
     private var pendingFolderReconnect: LibraryGame? = null
     private var pendingZipReplacement: LibraryGame? = null
@@ -646,11 +647,8 @@ class MainActivity : Activity() {
 
         val backup = File(base, ".backup-" + game.id + "-" + System.nanoTime())
         var movedOriginal = false
-        val profileName = game.browserProfile
         try {
-            if (currentWebViewProfile == profileName && profileName.isNotBlank()) {
-                destroyWebView()
-            }
+            if (currentWebViewGameId == game.id) destroyWebView()
             if (destination.exists()) {
                 if (!destination.renameTo(backup)) {
                     throw IOException("Could not protect the previous imported files before replacement.")
@@ -1119,7 +1117,7 @@ class MainActivity : Activity() {
         }
 
         try {
-            if (currentWebViewProfile == game.browserProfile) destroyWebView()
+            if (currentWebViewGameId == game.id) destroyWebView()
             ProfileStore.getInstance().deleteProfile(game.browserProfile)
             showHome("A data reset was requested. The game's profile will be recreated the next time it is played.")
         } catch (exception: Exception) {
@@ -1147,6 +1145,7 @@ class MainActivity : Activity() {
         }
         webView = null
         currentWebViewProfile = null
+        currentWebViewGameId = null
     }
 
     private fun confirmRemoveGame(game: LibraryGame) {
@@ -1166,6 +1165,7 @@ class MainActivity : Activity() {
 
     private fun removeLibraryGame(game: LibraryGame) {
         try {
+            if (currentWebViewGameId == game.id) destroyWebView()
             deleteBrowserProfile(game)
             when (game.storageType) {
                 LibraryStorageType.FOLDER -> removeFolderShortcut(game)
@@ -1268,6 +1268,7 @@ class MainActivity : Activity() {
             )
             .build()
         showPlayer(assetLoader, assetHost, game.browserProfile)
+        currentWebViewGameId = game.id
 
         val encodedPath = entryPoint.relativePath
             .split('/')
@@ -1366,6 +1367,7 @@ class MainActivity : Activity() {
                     }
                     webView = null
                     currentWebViewProfile = null
+                    currentWebViewGameId = null
                     showHome("The game renderer stopped unexpectedly.")
                 }
             }

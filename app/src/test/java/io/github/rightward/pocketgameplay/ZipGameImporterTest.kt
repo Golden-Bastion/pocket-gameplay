@@ -54,7 +54,8 @@ class ZipGameImporterTest {
                 assertEquals("existing-library-id", published.name)
                 assertTrue(File(published, "replacement/index.html").isFile)
                 assertFalse(staged.stagingDirectory.exists())
-                assertTrue(staged.cleanup() == Unit)
+                staged.cleanup()
+                assertTrue(published.isDirectory)
             } finally {
                 staged.cleanup()
             }
