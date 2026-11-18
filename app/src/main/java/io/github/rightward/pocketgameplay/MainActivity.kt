@@ -19,6 +19,8 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.Button
@@ -53,6 +55,7 @@ class MainActivity : Activity() {
     private var fullscreenPreviousUiVisibility: Int? = null
     private var fullscreenPreviousWindowFlag = false
     private var immersivePreviousUiVisibility: Int? = null
+    private var platformBackCallback: Any? = null
     private var isPlaying = false
     private var scanGeneration = 0
 
@@ -83,6 +86,7 @@ class MainActivity : Activity() {
         cleanInterruptedImports()
 
         pathHandler = GamePathHandler(contentResolver)
+        registerPlatformBackCallback()
         showHome()
     }
 
@@ -739,8 +743,7 @@ class MainActivity : Activity() {
         createPlayerControls(player)
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
+    private fun handleBackNavigation() {
         when (
             PlayerBackResolver.resolve(
                 PlayerBackState(
@@ -757,7 +760,34 @@ class MainActivity : Activity() {
             PlayerBackAction.EXIT_IMMERSIVE_FULLSCREEN -> exitImmersiveFullscreen()
             PlayerBackAction.NAVIGATE_GAME_HISTORY -> webView?.goBack()
             PlayerBackAction.RETURN_TO_LIBRARY -> returnToLibrary()
-            PlayerBackAction.EXIT_ACTIVITY -> super.onBackPressed()
+            PlayerBackAction.EXIT_ACTIVITY -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (!moveTaskToBack(true)) finish()
+                } else {
+                    @Suppress("DEPRECATION")
+                    super.onBackPressed()
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            handleBackNavigation()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    private fun registerPlatformBackCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = OnBackInvokedCallback { handleBackNavigation() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                callback
+            )
+            platformBackCallback = callback
         }
     }
 
@@ -776,6 +806,12 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            (platformBackCallback as? OnBackInvokedCallback)?.let {
+                onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it)
+            }
+        }
+        platformBackCallback = null
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
