@@ -46,6 +46,9 @@ val downloadEruda by tasks.registering {
                 "Eruda $erudaVersion package integrity check failed."
             }
 
+            if (archive.exists() && !archive.delete()) {
+                throw GradleException("Could not replace the stale cached Eruda archive.")
+            }
             check(temporary.renameTo(archive)) {
                 "Could not move the verified Eruda archive into the Gradle cache."
             }
