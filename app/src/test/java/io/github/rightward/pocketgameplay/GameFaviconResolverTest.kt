@@ -7,7 +7,7 @@ class GameFaviconResolverTest {
     @Test
     fun resolvesRelativeFaviconAgainstSelectedHtmlFile() {
         val candidates = GameFaviconResolver.candidates(
-            """<html><head><link rel="icon" type="image/png" href="../assets/game icon.png"></head></html>""",
+            """<html><head><link rel="icon" type="image/png" href="../assets/game%20icon.png"></head></html>""",
             "pages/start.html"
         )
 
