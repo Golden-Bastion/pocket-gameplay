@@ -949,7 +949,14 @@ class MainActivity : Activity() {
             return
         }
 
-        val sourcePath = LocalGameDownloadPath.resolve(Uri.parse(url), assetHost)
+        val downloadUri = Uri.parse(url)
+        val sourcePath = LocalGameDownloadPath.resolve(
+            scheme = downloadUri.scheme,
+            host = downloadUri.host,
+            port = downloadUri.port,
+            path = downloadUri.path,
+            expectedHost = assetHost
+        )
         if (sourcePath == null) {
             Toast.makeText(
                 this,
