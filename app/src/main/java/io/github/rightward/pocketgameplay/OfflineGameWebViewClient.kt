@@ -11,6 +11,7 @@ class OfflineGameWebViewClient(
     private val assetLoader: WebViewAssetLoader,
     private val gamePathHandler: GamePathHandler,
     private val assetHost: String,
+    private val onPageFinished: () -> Unit,
     private val onRendererGone: () -> Unit
 ) : WebViewClientCompat() {
 
@@ -29,11 +30,14 @@ class OfflineGameWebViewClient(
 
         // The /game/ route is the selected entry-point URL. Other paths on this reserved
         // per-game origin represent root-relative assets such as /assets/sprite.png.
-        return if (path.startsWith(GAME_PATH_PREFIX)) {
-            assetLoader.shouldInterceptRequest(uri)
-                ?: GamePathHandler.errorResponse(404, "Not Found")
-        } else {
-            gamePathHandler.handle(path.removePrefix("/"))
+        return when {
+            path.startsWith(DeveloperConsole.ASSET_PATH_PREFIX) ->
+                assetLoader.shouldInterceptRequest(uri)
+                    ?: GamePathHandler.errorResponse(404, "Not Found")
+            path.startsWith(GAME_PATH_PREFIX) ->
+                assetLoader.shouldInterceptRequest(uri)
+                    ?: GamePathHandler.errorResponse(404, "Not Found")
+            else -> gamePathHandler.handle(path.removePrefix("/"))
         }
     }
 
@@ -41,6 +45,11 @@ class OfflineGameWebViewClient(
         view: WebView,
         request: WebResourceRequest
     ): Boolean = !isLocalAssetOrigin(request.url)
+
+    override fun onPageFinished(view: WebView, url: String) {
+        super.onPageFinished(view, url)
+        onPageFinished()
+    }
 
     override fun onRenderProcessGone(
         view: WebView,
