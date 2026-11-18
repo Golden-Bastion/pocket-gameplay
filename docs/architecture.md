@@ -70,7 +70,7 @@ The build downloads the exact Eruda 3.4.3 npm archive and checks its SHA-512 int
 
 ## Library records and browser data
 
-The version-3 library registry stores immutable game IDs, display titles, storage references, entry-point paths, origin keys, and optional named WebView profile names. Version-1 records are read as imported ZIP games and version-2 records retain their imported or folder-backed storage type; missing profile fields remain empty so existing saves continue using the legacy default profile.
+The version-4 library registry stores immutable game IDs, display titles, storage references, entry-point paths, origin keys, and optional named WebView profile names. Version-1 records are read as imported ZIP games and version-2 records retain their imported or folder-backed storage type; missing profile fields remain empty so existing saves continue using the legacy default profile.
 
 Imported games point to app-private extracted directories. Folder-backed games store a persisted Storage Access Framework tree URI and a relative HTML entry point; they never own or delete the original directory. Folder shortcut IDs begin as a deterministic tree-URI/entry-point pair. If Android revokes access, reconnecting the folder can rebind the shortcut to a newly granted tree URI while preserving its original library ID, origin host, and browser profile. This keeps that game's saved data associated with the same shortcut.
 
