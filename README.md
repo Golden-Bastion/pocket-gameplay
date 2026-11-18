@@ -20,6 +20,10 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Collapsible native playback controls for returning to the library, reloading the current game, entering immersive fullscreen, and opening the developer console.
 - WebView HTML fullscreen and fullscreen media custom-view handling, including restoration of window and system UI state.
 - Back navigation prioritizes closing player overlays and fullscreen modes before game history and library exit.
+- Explicit MIME handling for common HTML5 assets, including modules, WebAssembly, fonts, audio and video.
+- Single byte-range responses for local media seeking when the storage provider reports a reliable file size.
+- SAF-backed file inputs and user-selected export of files inside the current game folder.
+- A manual offline HTML5 runtime compatibility fixture under `test-fixtures/html5-compatibility/`.
 
 ## Build
 
@@ -40,6 +44,8 @@ Then use `./gradlew` for subsequent builds. The first build on a clean workspace
 See [the developer console guide](docs/developer-console.md) for its behavior and security boundaries.
 
 See [playback controls and fullscreen](docs/player-controls.md) for the control surface, Back priority, fullscreen lifecycle, and rotation behavior.
+
+See [HTML5 runtime compatibility](docs/html5-runtime-compatibility.md) for MIME handling, media seeking, file inputs, downloads, and the device test fixture.
 
 ## Compatibility
 
