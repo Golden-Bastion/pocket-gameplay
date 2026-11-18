@@ -17,7 +17,7 @@ class ZipEntryPathTest {
         assertNull(ZipEntryPath.normalize("game/../../outside.txt", false))
         assertNull(ZipEntryPath.normalize("/absolute/file.html", false))
         assertNull(ZipEntryPath.normalize("C:/outside.txt", false))
-        assertNull(ZipEntryPath.normalize("game\\\\outside.txt", false))
+        assertNull(ZipEntryPath.normalize("game\\outside.txt", false))
     }
 
     @Test

@@ -201,7 +201,7 @@ class ZipGameImporter(
     private fun displayNameFrom(archiveDisplayName: String): String {
         val baseName = archiveDisplayName
             .substringAfterLast('/')
-            .substringAfterLast('\\\\')
+            .substringAfterLast('\\')
             .trim()
         val withoutExtension = if (baseName.endsWith(".zip", ignoreCase = true)) {
             baseName.dropLast(4)

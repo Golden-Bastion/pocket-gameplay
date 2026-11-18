@@ -11,7 +11,7 @@ object ZipEntryPath {
 
     fun normalize(entryName: String, isDirectory: Boolean): String? {
         if (entryName.isBlank() || entryName.length > MAX_PATH_LENGTH) return null
-        if (entryName.startsWith('/') || '\\\\' in entryName || '\u0000' in entryName) return null
+        if (entryName.startsWith('/') || '\\' in entryName || '\u0000' in entryName) return null
 
         val normalized = if (isDirectory && entryName.endsWith('/')) {
             entryName.dropLast(1)
@@ -23,7 +23,7 @@ object ZipEntryPath {
         val segments = normalized.split('/')
         if (segments.any { segment ->
                 segment.isEmpty() || segment == "." || segment == ".." ||
-                    '\\\\' in segment || '\u0000' in segment
+                    '\\' in segment || '\u0000' in segment
             }
         ) {
             return null
