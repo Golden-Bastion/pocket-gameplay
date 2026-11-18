@@ -36,9 +36,9 @@ class GamePathHandler(
         }
 
         val document = resolveDocument(path) ?: return notFound()
-        val contentLength = document.length().coerceAtLeast(0)
+        val contentLength = knownLength(document)
         val isHead = method.equals("HEAD", ignoreCase = true)
-        val rangeResult = if (isHead) {
+        val rangeResult = if (isHead || contentLength < 0) {
             ByteRangeResult.Ignore
         } else {
             ByteRangeParser.parse(rangeHeader, contentLength)
@@ -57,10 +57,8 @@ class GamePathHandler(
 
         val mimeType = GameAssetMimeTypes.forFileName(segments.last())
         val encoding = if (GameAssetMimeTypes.isTextual(mimeType)) "UTF-8" else null
-        val responseHeaders = linkedMapOf(
-            "Cache-Control" to "no-store",
-            "Accept-Ranges" to "bytes"
-        )
+        val responseHeaders = linkedMapOf("Cache-Control" to "no-store")
+        if (contentLength >= 0) responseHeaders["Accept-Ranges"] = "bytes"
 
         val statusCode: Int
         val reasonPhrase: String
@@ -97,7 +95,9 @@ class GamePathHandler(
                 statusCode = 200
                 reasonPhrase = "OK"
                 bodyLength = contentLength
-                responseHeaders["Content-Length"] = contentLength.toString()
+                if (contentLength >= 0) {
+                    responseHeaders["Content-Length"] = contentLength.toString()
+                }
                 bodyStream = if (isHead) {
                     ByteArrayInputStream(ByteArray(0))
                 } else {
@@ -126,6 +126,21 @@ class GamePathHandler(
         }
 
         return document.takeIf { it.isFile && it.canRead() }
+    }
+
+    private fun knownLength(document: DocumentFile): Long {
+        val documentLength = runCatching { document.length() }.getOrDefault(-1L)
+        if (documentLength > 0) return documentLength
+
+        val descriptorLength = runCatching {
+            contentResolver.openAssetFileDescriptor(document.uri, "r")?.use { it.length }
+        }.getOrNull()
+
+        return when {
+            descriptorLength != null && descriptorLength >= 0 -> descriptorLength
+            documentLength == 0L && descriptorLength == null -> -1L
+            else -> documentLength
+        }
     }
 
     private fun openDocument(document: DocumentFile): InputStream? {
