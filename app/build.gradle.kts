@@ -124,7 +124,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = providers.gradleProperty("appVersionCode")
-            .orElse("100000")
+            .orElse("1000")
             .get()
             .toInt()
         versionName = providers.gradleProperty("appVersionName")
