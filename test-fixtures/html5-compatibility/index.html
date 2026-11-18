@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pocket Gameplay HTML5 Compatibility Fixture</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="app.mjs"></script>
+</head>
+<body>
+<main>
+    <header>
+        <img src="assets/fixture.svg" alt="" width="48" height="48">
+        <div>
+            <h1>HTML5 Runtime Check</h1>
+            <p>Offline WebView compatibility fixture</p>
+        </div>
+    </header>
+
+    <section>
+        <h2>Runtime probes</h2>
+        <ul id="results" aria-live="polite">
+            <li>Loading ES module…</li>
+        </ul>
+        <button id="audio-button" type="button">Test Web Audio</button>
+    </section>
+
+    <section>
+        <h2>Local media and seeking</h2>
+        <audio controls preload="metadata" src="media/tone.wav">
+            Audio playback is not supported.
+        </audio>
+        <p class="hint">The local WAV file is served by Pocket Gameplay. Drag the timeline to test byte-range seeking.</p>
+        <label>
+            Choose a local video file
+            <input id="video-file" type="file" accept="video/*">
+        </label>
+        <video id="video-preview" controls playsinline></video>
+    </section>
+
+    <section>
+        <h2>Local storage</h2>
+        <p id="storage-result">Checking storage…</p>
+        <button id="storage-button" type="button">Write and read storage</button>
+    </section>
+
+    <section>
+        <h2>User-mediated file actions</h2>
+        <p><a href="export.txt" download="pocket-gameplay-export.txt">Save fixture export file</a></p>
+        <p class="hint">The app should ask you where to save this local file.</p>
+    </section>
+
+    <footer>
+        <p>Use the native Controls menu → Dev to inspect the page with Eruda.</p>
+    </footer>
+</main>
+</body>
+</html>

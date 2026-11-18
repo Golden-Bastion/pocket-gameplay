@@ -20,6 +20,10 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Collapsible native playback controls for returning to the library, reloading the current game, entering immersive fullscreen, and opening the developer console.
 - WebView HTML fullscreen and fullscreen media custom-view handling, including restoration of window and system UI state.
 - Back navigation prioritizes closing player overlays and fullscreen modes before game history and library exit.
+- Explicit MIME handling for common HTML5 assets, including modules, WebAssembly, fonts, audio and video.
+- Single byte-range responses for local media seeking when the storage provider reports a reliable file size.
+- SAF-backed file inputs and user-selected export of files inside the current game folder.
+- A manual offline HTML5 runtime compatibility fixture under `test-fixtures/html5-compatibility/`.
 
 ## Build
 
@@ -41,10 +45,12 @@ See [the developer console guide](docs/developer-console.md) for its behavior an
 
 See [playback controls and fullscreen](docs/player-controls.md) for the control surface, Back priority, fullscreen lifecycle, and rotation behavior.
 
+See [HTML5 runtime compatibility](docs/html5-runtime-compatibility.md) for MIME handling, media seeking, file inputs, downloads, and the device test fixture.
+
 ## Compatibility
 
 Games run inside the Android System WebView installed on the device. Compatibility depends on the device's WebView version and on the browser APIs used by the game. This project targets ordinary HTML5 games; it does not emulate Flash or desktop browser runtimes.
 
 ## Security model
 
-The app only reads files inside a folder explicitly selected by the user or files extracted into its app-private directory. WebView's direct file and content access remain disabled. Game resources are exposed through a custom `WebViewAssetLoader.PathHandler`, with path validation at the folder boundary. ZIP archives are treated as untrusted input and extracted only into bounded, private staging directories. The app intentionally has no general internet permission.
+The app only reads files inside a folder explicitly selected by the user or files extracted into its app-private directory. WebView's direct file and content access remain disabled. Game resources are served by a request-aware local file handler with path validation at the folder boundary. App-owned developer assets use `WebViewAssetLoader`. ZIP archives are treated as untrusted input and extracted only into bounded, private staging directories. The app intentionally has no general internet permission.

@@ -16,7 +16,7 @@ Scanning is bounded by a maximum depth and number of visited entries so unusuall
 
 ## Local resource serving
 
-A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. Relative references retain their normal web behavior:
+The request-aware local game route resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. It runs from `WebViewClient.shouldInterceptRequest` so it can preserve the request method and `Range` header for local file responses. Relative references retain their normal web behavior:
 
 ```html
 <script src="js/game.js"></script>
@@ -25,7 +25,7 @@ A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments be
 
 Each game is loaded from a distinct HTTPS-style host generated beneath the reserved `appassets.androidplatform.net` domain, with `WebViewAssetLoader.Builder.setDomain`. The origin key is stable for an imported game and deterministically derived from a selected folder's Storage Access Framework URI. This keeps browser-managed origin storage isolated between games.
 
-The selected entry point is loaded from `https://<game-origin>/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
+The selected entry point is loaded from `https://<game-origin>/game/<entry-point>`. The reserved `/game/` route and root-relative URLs such as `/assets/player.png` are resolved by the same local file handler, which preserves Range and GET/HEAD request semantics. The reserved `/__pocket/` route is handled separately by `WebViewAssetLoader` for app-owned developer assets.
 
 Missing or invalid local paths return a 404 response rather than falling through to the network.
 
@@ -39,6 +39,14 @@ Missing or invalid local paths return a 404 response rather than falling through
 - No JavaScript bridge exposes native app APIs to game code.
 
 Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
+
+## HTML5 runtime and media compatibility
+
+`GameAssetMimeTypes` maps common HTML5 assets, fonts, images, audio and video extensions to explicit MIME types. `GamePathHandler` supports `GET` and `HEAD`; valid single byte ranges return `206 Partial Content` with `Content-Range` and a bounded stream, while unsatisfiable ranges return `416`. Multiple or malformed ranges are ignored and served as full responses. If a storage provider cannot report a reliable size, byte ranges are not advertised for that resource.
+
+HTML file inputs are handled through Android's Storage Access Framework document picker. Only readable `content://` URIs selected by the user are returned to WebView, without persisting per-file grants. Local game-file downloads are handled through `ACTION_CREATE_DOCUMENT` and require the user to choose a save destination. External, `blob:`, and `data:` downloads are rejected rather than enabling network access or adding a JavaScript bridge.
+
+The manual fixture in `test-fixtures/html5-compatibility` exercises browser APIs and local media on an actual device. Device WebView version, codecs and hardware still determine final compatibility.
 
 ## Playback controls and fullscreen
 

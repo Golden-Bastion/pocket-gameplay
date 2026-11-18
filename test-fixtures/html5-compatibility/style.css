@@ -1,0 +1,70 @@
+:root {
+    color-scheme: dark;
+    font-family: system-ui, sans-serif;
+    background: #101114;
+    color: #f3f3f3;
+}
+body {
+    margin: 0;
+    padding: 16px;
+}
+main {
+    max-width: 760px;
+    margin: 0 auto;
+}
+header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+h1, h2, p {
+    margin-top: 0;
+}
+h1 {
+    font-size: 1.45rem;
+}
+h2 {
+    font-size: 1.05rem;
+}
+header p, .hint, footer {
+    color: #b6bac5;
+}
+section {
+    background: #20232a;
+    border-radius: 10px;
+    padding: 16px;
+    margin: 14px 0;
+}
+button, input {
+    font: inherit;
+}
+button {
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: #fff;
+    background: #4556a8;
+}
+li {
+    margin: 8px 0;
+}
+li.pass {
+    color: #8fe0a6;
+}
+li.fail {
+    color: #ff9b9b;
+}
+audio, video {
+    display: block;
+    width: 100%;
+    margin: 12px 0;
+}
+video {
+    max-height: 300px;
+    background: #000;
+}
+label {
+    display: block;
+    margin: 14px 0;
+}
