@@ -63,6 +63,30 @@ class ZipGameImporterTest {
     }
 
     @Test
+    fun rejectsUnsafeReplacementTargetWithoutPublishingOrEscapingGamesDirectory() {
+        withTemporaryDirectory { directory ->
+            val games = File(directory, "games")
+            val importer = ZipGameImporter(games)
+            val staged = importer.extract(
+                zipOf("index.html" to "<html>game</html>"),
+                "game.zip"
+            )
+
+            try {
+                try {
+                    staged.publish(games, "../outside")
+                    throw AssertionError("Expected unsafe target rejection.")
+                } catch (expected: ZipImportException) {
+                    assertTrue(staged.stagingDirectory.isDirectory)
+                    assertFalse(File(directory, "outside").exists())
+                }
+            } finally {
+                staged.cleanup()
+            }
+        }
+    }
+
+    @Test
     fun rejectsTraversalAndCleansStagingDirectory() {
         withTemporaryDirectory { directory ->
             val games = File(directory, "games")

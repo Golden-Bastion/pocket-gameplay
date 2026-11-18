@@ -10,7 +10,7 @@ Renaming edits only the display title. The immutable library ID, imported direct
 
 ## Storage and recovery
 
-An imported ZIP is extracted into Pocket Gameplay's private storage. Removing an imported entry removes its library record and deletes that private copy. If its extracted files are missing or incomplete, **Replace ZIP** imports a new archive under the same library ID and updates the selected root/start page. The title and named browser profile remain unchanged. The replacement is staged before the existing directory is moved aside; interrupted replacement backups are checked on the next app start.
+An imported ZIP is extracted into Pocket Gameplay's private storage. Removing an imported entry removes its library record and deletes that private copy. If its extracted files are missing or incomplete, **Replace ZIP** imports a new archive under the same library ID and updates the selected root/start page. The title and named browser profile remain unchanged. The replacement is staged before the existing directory is moved aside; interrupted backups are checked on the next app start. A valid committed directory wins, an invalid one is rolled back where possible, and a backup that cannot be moved safely is kept rather than discarded.
 
 A folder-backed entry is a shortcut to a directory selected by the user through Android's Storage Access Framework. Removing it removes only the shortcut and never deletes files from the original folder. The persisted read permission is released after the last shortcut using that exact tree URI is removed.
 
