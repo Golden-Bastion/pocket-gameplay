@@ -64,7 +64,7 @@ Never commit the keystore to the repository. Add the following repository secret
 On Linux or macOS, create the base64 value with:
 
 ```sh
-base64 < pocket-gameplay-release.jks | tr -d '\\n'```
+base64 < pocket-gameplay-release.jks | tr -d '\n'```
 
 On PowerShell, use:
 
