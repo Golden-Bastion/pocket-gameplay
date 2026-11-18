@@ -1,3 +1,4 @@
+import java.io.File
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Base64
@@ -14,6 +15,8 @@ val erudaArchive = layout.buildDirectory.file("downloads/eruda-$erudaVersion.tgz
 val erudaAssets = layout.buildDirectory.dir("generated/assets/eruda/main")
 
 val downloadEruda by tasks.registering {
+    inputs.property("erudaVersion", erudaVersion)
+    inputs.property("erudaPackageIntegrity", erudaPackageIntegrity)
     outputs.file(erudaArchive)
 
     doLast {
