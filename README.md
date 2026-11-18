@@ -20,7 +20,7 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Optional in-game developer console powered by locally bundled Eruda 3.4.3.
 - Fixed native player toolbar with one-tap library exit and reload actions, a visible game title, and an overflow menu for immersive fullscreen and the developer console.
 - WebView HTML fullscreen and fullscreen media custom-view handling, including restoration of window and system UI state.
-- Back navigation prioritizes closing player overlays and fullscreen modes before game history and library exit.
+- Back navigation prioritizes dismissing player menus and exiting fullscreen modes before game history or returning to the library.
 - Explicit MIME handling for common HTML5 assets, including modules, WebAssembly, fonts, audio and video.
 - Single byte-range responses for local media seeking when the storage provider reports a reliable file size.
 - SAF-backed file inputs and user-selected export of files inside the current game folder.
