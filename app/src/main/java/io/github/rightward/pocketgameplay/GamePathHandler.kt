@@ -97,9 +97,7 @@ class GamePathHandler(
                 statusCode = 200
                 reasonPhrase = "OK"
                 bodyLength = contentLength
-                if (contentLength > 0) {
-                    responseHeaders["Content-Length"] = contentLength.toString()
-                }
+                responseHeaders["Content-Length"] = contentLength.toString()
                 bodyStream = if (isHead) {
                     ByteArrayInputStream(ByteArray(0))
                 } else {
@@ -166,6 +164,7 @@ class GamePathHandler(
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (length == 0) return 0
             if (remaining <= 0) return -1
             val allowed = minOf(length.toLong(), remaining).toInt()
             val read = super.read(buffer, offset, allowed)
@@ -174,7 +173,7 @@ class GamePathHandler(
         }
 
         override fun skip(byteCount: Long): Long {
-            if (remaining <= 0) return 0
+            if (byteCount <= 0 || remaining <= 0) return 0
             val skipped = super.skip(minOf(byteCount, remaining))
             remaining -= skipped
             return skipped
