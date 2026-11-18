@@ -1386,7 +1386,7 @@ class MainActivity : Activity() {
             runCatching { it.onPause() }
             (it.parent as? ViewGroup)?.removeView(it)
             runCatching { it.webChromeClient = null }
-            runCatching { it.webViewClient = null }
+            runCatching { it.webViewClient = android.webkit.WebViewClient() }
             runCatching { it.setDownloadListener(null) }
             runCatching { it.removeAllViews() }
             runCatching { it.destroy() }
