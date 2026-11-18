@@ -47,7 +47,7 @@ class GameLibraryStore(private val metadataFile: File) {
         if (!metadataFile.exists()) return emptyList()
 
         val properties = Properties()
-        metadataFile.inputStream().buffered().use(properties::load)
+        metadataFile.inputStream().buffered().use { input -> properties.load(input) }
 
         val version = properties.getProperty(KEY_VERSION)?.toIntOrNull()
         if (version != FORMAT_VERSION) {

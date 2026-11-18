@@ -108,13 +108,27 @@ class ZipGameImporterTest {
     }
 
     @Test
-    fun rejectsDuplicateEntries() {
+    fun rejectsDuplicateNormalizedPaths() {
         withTemporaryDirectory { directory ->
             val importer = ZipGameImporter(File(directory, "games"))
 
             try {
-                importer.extract(zipOf("index.html" to "one", "index.html" to "two"), "Duplicate.zip")
-                throw AssertionError("Expected duplicate path rejection.")
+                importer.extract(zipOf("duplicate/" to "", "duplicate" to "payload"), "Duplicate.zip")
+                throw AssertionError("Expected duplicate normalized path rejection.")
+            } catch (expected: ZipImportException) {
+                assertTrue(File(directory, "games").listFiles().isNullOrEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun rejectsFileDirectoryPathConflicts() {
+        withTemporaryDirectory { directory ->
+            val importer = ZipGameImporter(File(directory, "games"))
+
+            try {
+                importer.extract(zipOf("assets/index.html" to "page", "assets" to "file"), "Conflict.zip")
+                throw AssertionError("Expected file/directory collision rejection.")
             } catch (expected: ZipImportException) {
                 assertTrue(File(directory, "games").listFiles().isNullOrEmpty())
             }
