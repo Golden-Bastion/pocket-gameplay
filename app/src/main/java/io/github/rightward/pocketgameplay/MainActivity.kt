@@ -76,7 +76,6 @@ class MainActivity : Activity() {
     private var developerConsoleMenuItem: MenuItem? = null
     private var developerConsolePoll: Runnable? = null
     private var developerConsolePageReady = false
-    private var playerControlsButton: ImageButton? = null
     private var playerControlsPopup: PopupMenu? = null
     private var playerToolbar: LinearLayout? = null
     private var playerViewport: FrameLayout? = null
@@ -140,7 +139,6 @@ class MainActivity : Activity() {
         playerControlsPopup = null
         controlsExpanded = false
         developerConsoleMenuItem = null
-        playerControlsButton = null
         playerToolbar = null
         playerViewport = null
         content.removeAllViews()
@@ -1651,7 +1649,6 @@ class MainActivity : Activity() {
         playerControlsPopup?.dismiss()
         playerControlsPopup = null
         developerConsoleMenuItem = null
-        playerControlsButton = null
         playerToolbar = null
         playerViewport = null
         super.onDestroy()
@@ -1985,7 +1982,6 @@ class MainActivity : Activity() {
             setPlayerControlsExpanded(!controlsExpanded)
         }
         toolbar.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
-        playerControlsButton = menuButton
 
         val popup = PopupMenu(this, menuButton)
         popup.gravity = Gravity.END
