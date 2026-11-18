@@ -618,7 +618,7 @@ class MainActivity : Activity() {
             .addPathHandler("/game/", pathHandler)
             .addPathHandler(
                 DeveloperConsole.ASSET_PATH_PREFIX,
-                WebViewAssetLoader.AssetsPathHandler(this, "developer/")
+                WebViewAssetLoader.AssetsPathHandler(this)
             )
             .build()
         showPlayer(assetLoader, assetHost)
