@@ -70,6 +70,7 @@ class MainActivity : Activity() {
     private var pendingZipReplacement: LibraryGame? = null
     private var developerConsoleButton: Button? = null
     private var developerConsolePoll: Runnable? = null
+    private var developerConsolePageReady = false
     private var playerControlsButton: Button? = null
     private var playerControlsPanel: LinearLayout? = null
     private var controlsExpanded = false
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
 
     private fun showHome(message: String? = null) {
         cancelDeveloperConsolePolling()
+        developerConsolePageReady = false
         libraryExitConfirmation.reset()
         cancelPendingFileChooser()
         currentGameAssetHost = null
@@ -1205,6 +1207,7 @@ class MainActivity : Activity() {
 
     private fun destroyWebView() {
         cancelDeveloperConsolePolling()
+        developerConsolePageReady = false
         webView?.let { view ->
             view.stopLoading()
             (view.parent as? ViewGroup)?.removeView(view)
@@ -1339,6 +1342,8 @@ class MainActivity : Activity() {
     }
 
     private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, game: LibraryGame) {
+        developerConsolePageReady = false
+        cancelDeveloperConsolePolling()
         cancelPendingFileChooser()
         webView?.stopLoading()
 
@@ -1440,6 +1445,7 @@ class MainActivity : Activity() {
                     if (webView === player) {
                         cancelPendingFileChooser()
                         cancelDeveloperConsolePolling()
+                        developerConsolePageReady = false
                         developerConsoleButton?.apply {
                             text = getString(R.string.developer_console)
                             isEnabled = false
@@ -1450,6 +1456,7 @@ class MainActivity : Activity() {
             onPageFinished = {
                 mainHandler.post {
                     if (webView === player) {
+                        developerConsolePageReady = true
                         developerConsoleButton?.apply {
                             text = getString(R.string.developer_console)
                             isEnabled = true
@@ -1764,12 +1771,12 @@ class MainActivity : Activity() {
 
     private fun toggleDeveloperConsole(player: WebView) {
         val button = developerConsoleButton ?: return
-        if (webView !== player) return
+        if (webView !== player || !developerConsolePageReady) return
 
         cancelDeveloperConsolePolling()
         button.isEnabled = false
         player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT) { result ->
-            if (webView !== player || developerConsoleButton !== button) return@evaluateJavascript
+            if (webView !== player || developerConsoleButton !== button || !developerConsolePageReady) return@evaluateJavascript
 
             when (developerConsoleStatus(result)) {
                 "loading" -> {
@@ -1791,13 +1798,13 @@ class MainActivity : Activity() {
         var attemptsRemaining = DEVELOPER_CONSOLE_POLL_ATTEMPTS
         lateinit var poll: Runnable
         poll = Runnable {
-            if (webView !== player || developerConsoleButton == null) {
+            if (webView !== player || developerConsoleButton == null || !developerConsolePageReady) {
                 developerConsolePoll = null
                 return@Runnable
             }
 
             player.evaluateJavascript(DeveloperConsole.STATUS_SCRIPT) { result ->
-                if (webView !== player || developerConsoleButton == null) {
+                if (webView !== player || developerConsoleButton == null || !developerConsolePageReady) {
                     developerConsolePoll = null
                     return@evaluateJavascript
                 }
@@ -1819,7 +1826,7 @@ class MainActivity : Activity() {
     }
 
     private fun cancelDeveloperConsolePolling() {
-        developerConsolePoll?.let(mainHandler::removeCallbacks)
+        developerConsolePoll?.let { mainHandler.removeCallbacks(it) }
         developerConsolePoll = null
     }
 
@@ -1844,7 +1851,7 @@ class MainActivity : Activity() {
             }
             else -> {
                 button.text = getString(R.string.developer_console)
-                button.isEnabled = webView != null
+                button.isEnabled = developerConsolePageReady
                 val message = when (status) {
                     "load_error" ->
                         "Dev console asset could not load. The bundled Eruda file or local asset route may be missing."
