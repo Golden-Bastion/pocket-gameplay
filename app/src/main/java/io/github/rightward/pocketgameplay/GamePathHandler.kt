@@ -35,16 +35,7 @@ class GamePathHandler(
             return errorResponse(405, "Method Not Allowed", mapOf("Allow" to "GET, HEAD"))
         }
 
-        val segments = RelativeGamePath.parse(path) ?: return notFound()
-        var document = gameRoot ?: return notFound()
-
-        for ((index, segment) in segments.withIndex()) {
-            document = document.findFile(segment) ?: return notFound()
-            if (index < segments.lastIndex && !document.isDirectory) return notFound()
-        }
-
-        if (!document.isFile || !document.canRead()) return notFound()
-
+        val document = resolveDocument(path) ?: return notFound()
         val contentLength = document.length().coerceAtLeast(0)
         val isHead = method.equals("HEAD", ignoreCase = true)
         val rangeResult = if (isHead) {
@@ -125,6 +116,18 @@ class GamePathHandler(
             responseHeaders,
             bodyStream
         )
+    }
+
+    fun resolveDocument(path: String): DocumentFile? {
+        val segments = RelativeGamePath.parse(path) ?: return null
+        var document = gameRoot ?: return null
+
+        for ((index, segment) in segments.withIndex()) {
+            document = document.findFile(segment) ?: return null
+            if (index < segments.lastIndex && !document.isDirectory) return null
+        }
+
+        return document.takeIf { it.isFile && it.canRead() }
     }
 
     private fun openDocument(document: DocumentFile): InputStream? {
