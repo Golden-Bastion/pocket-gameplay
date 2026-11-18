@@ -11,7 +11,7 @@ import java.net.URI
 object GameFaviconResolver {
     private val linkTag = Regex("(?is)<link\\b[^>]*>")
     private val attribute = Regex(
-        """(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>`]+))"""
+        """(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"""
     )
     private val scheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
