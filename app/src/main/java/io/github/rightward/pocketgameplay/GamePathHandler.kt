@@ -3,7 +3,6 @@ package io.github.rightward.pocketgameplay
 import android.content.ContentResolver
 import android.webkit.WebResourceResponse
 import androidx.documentfile.provider.DocumentFile
-import androidx.webkit.WebViewAssetLoader
 import java.io.ByteArrayInputStream
 import java.io.EOFException
 import java.io.FilterInputStream
@@ -12,7 +11,7 @@ import java.io.InputStream
 
 class GamePathHandler(
     private val contentResolver: ContentResolver
-) : WebViewAssetLoader.PathHandler {
+) {
     @Volatile
     private var gameRoot: DocumentFile? = null
 
@@ -20,7 +19,7 @@ class GamePathHandler(
         gameRoot = root
     }
 
-    override fun handle(path: String): WebResourceResponse {
+    fun handle(path: String): WebResourceResponse {
         return handle(path, rangeHeader = null, method = "GET")
     }
 
