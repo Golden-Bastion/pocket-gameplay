@@ -14,8 +14,15 @@ data class LibraryGame(
     val directoryName: String,
     val rootPath: String,
     val entryPoint: String,
-    val importedAtEpochMillis: Long
+    val importedAtEpochMillis: Long,
+    val storageType: String = LibraryStorageType.IMPORTED,
+    val sourceUri: String = ""
 )
+
+object LibraryStorageType {
+    const val IMPORTED = "imported"
+    const val FOLDER = "folder"
+}
 
 /**
  * Small file-backed registry for imported games.
@@ -50,7 +57,7 @@ class GameLibraryStore(private val metadataFile: File) {
         metadataFile.inputStream().buffered().use { input -> properties.load(input) }
 
         val version = properties.getProperty(KEY_VERSION)?.toIntOrNull()
-        if (version != FORMAT_VERSION) {
+        if (version !in MIN_SUPPORTED_VERSION..FORMAT_VERSION) {
             throw IOException("Unsupported game library metadata version.")
         }
 
@@ -70,7 +77,10 @@ class GameLibraryStore(private val metadataFile: File) {
                 entryPoint = required(properties, prefix + "entry"),
                 importedAtEpochMillis = properties.getProperty(prefix + "importedAt")
                     ?.toLongOrNull()
-                    ?: throw IOException("Game library metadata contains an invalid import time.")
+                    ?: throw IOException("Game library metadata contains an invalid import time."),
+                storageType = properties.getProperty(prefix + "storageType")
+                    ?: LibraryStorageType.IMPORTED,
+                sourceUri = properties.getProperty(prefix + "sourceUri", "")
             )
         }
     }
@@ -97,6 +107,8 @@ class GameLibraryStore(private val metadataFile: File) {
                 setProperty(prefix + "root", game.rootPath)
                 setProperty(prefix + "entry", game.entryPoint)
                 setProperty(prefix + "importedAt", game.importedAtEpochMillis.toString())
+                setProperty(prefix + "storageType", game.storageType)
+                setProperty(prefix + "sourceUri", game.sourceUri)
             }
         }
 
@@ -130,7 +142,8 @@ class GameLibraryStore(private val metadataFile: File) {
     companion object {
         private const val KEY_VERSION = "version"
         private const val KEY_COUNT = "count"
-        private const val FORMAT_VERSION = 1
+        private const val MIN_SUPPORTED_VERSION = 1
+        private const val FORMAT_VERSION = 2
         private const val MAX_LIBRARY_ITEMS = 10_000
     }
 }

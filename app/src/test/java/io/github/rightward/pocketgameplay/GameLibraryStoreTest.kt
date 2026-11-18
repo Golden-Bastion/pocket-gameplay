@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.Properties
 
 class GameLibraryStoreTest {
     @Test
@@ -24,6 +25,54 @@ class GameLibraryStoreTest {
             GameLibraryStore(metadata).add(game)
 
             assertEquals(listOf(game), GameLibraryStore(metadata).all())
+        }
+    }
+
+    @Test
+    fun readsVersionOneMetadataAsImportedGames() {
+        withTemporaryDirectory { directory ->
+            val metadata = File(directory, "library.properties")
+            val properties = Properties().apply {
+                setProperty("version", "1")
+                setProperty("count", "1")
+                setProperty("game.0.id", "legacy-id")
+                setProperty("game.0.title", "Legacy game")
+                setProperty("game.0.directory", "legacy-id")
+                setProperty("game.0.root", "wrapper")
+                setProperty("game.0.entry", "start.html")
+                setProperty("game.0.importedAt", "1000")
+            }
+            metadata.outputStream().use { properties.store(it, "Version one fixture") }
+
+            val game = GameLibraryStore(metadata).all().single()
+
+            assertEquals("legacy-id", game.id)
+            assertEquals(LibraryStorageType.IMPORTED, game.storageType)
+            assertEquals("", game.sourceUri)
+        }
+    }
+
+    @Test
+    fun storesFolderReferencesInVersionTwoMetadata() {
+        withTemporaryDirectory { directory ->
+            val metadata = File(directory, "library.properties")
+            val folderGame = LibraryGame(
+                id = "folder-game",
+                title = "My downloaded game",
+                directoryName = "",
+                rootPath = "",
+                entryPoint = "Start Page.html",
+                importedAtEpochMillis = 1234L,
+                storageType = LibraryStorageType.FOLDER,
+                sourceUri = "content://provider/tree/folder"
+            )
+
+            GameLibraryStore(metadata).add(folderGame)
+
+            assertEquals(listOf(folderGame), GameLibraryStore(metadata).all())
+            val properties = Properties()
+            metadata.inputStream().use { properties.load(it) }
+            assertEquals("2", properties.getProperty("version"))
         }
     }
 
