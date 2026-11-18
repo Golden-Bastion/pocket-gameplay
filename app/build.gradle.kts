@@ -65,10 +65,10 @@ val extractEruda by tasks.registering {
         val erudaScript = packageFiles.matching {
             include("package/eruda.js")
         }.singleFile
-        val developerAssets = erudaAssets.get().asFile.resolve("developer")
-        developerAssets.mkdirs()
-        erudaScript.copyTo(developerAssets.resolve("eruda.js"), overwrite = true)
-        developerAssets.resolve("LICENSE").writeText(
+        val generatedAssets = erudaAssets.get().asFile
+        generatedAssets.mkdirs()
+        erudaScript.copyTo(generatedAssets.resolve("eruda.js"), overwrite = true)
+        generatedAssets.resolve("ERUDA-LICENSE.txt").writeText(
             """The MIT License (MIT)
 
 Copyright (c) 2016-present liriliri
@@ -92,7 +92,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
         )
-        developerAssets.resolve("VERSION.txt").writeText(
+        generatedAssets.resolve("ERUDA-VERSION.txt").writeText(
             "Eruda $erudaVersion\n" +
                 "Source: https://www.npmjs.com/package/eruda\n" +
                 "Package: https://registry.npmjs.org/eruda/-/eruda-$erudaVersion.tgz\n"
