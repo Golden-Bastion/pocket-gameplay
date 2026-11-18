@@ -80,7 +80,7 @@ class GameLibraryStoreTest {
 
             val migratedProperties = Properties()
             metadata.inputStream().use { migratedProperties.load(it) }
-            assertEquals("3", migratedProperties.getProperty("version"))
+            assertEquals("4", migratedProperties.getProperty("version"))
         }
     }
 
