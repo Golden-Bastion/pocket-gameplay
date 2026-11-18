@@ -1,6 +1,5 @@
 package io.github.rightward.pocketgameplay
 
-import java.net.URI
 import java.net.URLDecoder
 
 /**
@@ -18,10 +17,6 @@ object GameFaviconResolver {
 
     fun candidates(html: String, entryPoint: String): List<String> {
         if (RelativeGamePath.parse(entryPoint) == null) return emptyList()
-
-        val base = runCatching {
-            URI(null, null, "/$entryPoint", null)
-        }.getOrNull() ?: return emptyList()
 
         val declared = mutableListOf<Pair<Int, String>>()
         linkTag.findAll(html).forEach { match ->
@@ -41,7 +36,7 @@ object GameFaviconResolver {
                 else -> return@forEach
             }
             val href = attributes["href"]?.trim().orEmpty()
-            val resolved = resolveLocalPath(base, href) ?: return@forEach
+            val resolved = resolveLocalPath(entryPoint, href) ?: return@forEach
             declared += priority to resolved
         }
 
@@ -55,7 +50,7 @@ object GameFaviconResolver {
         return result.toList()
     }
 
-    private fun resolveLocalPath(base: URI, href: String): String? {
+    private fun resolveLocalPath(entryPoint: String, href: String): String? {
         if (href.isBlank() || href.startsWith("//") || scheme.containsMatchIn(href)) {
             return null
         }
@@ -68,14 +63,33 @@ object GameFaviconResolver {
         val decodedPath = runCatching {
             URLDecoder.decode(pathOnly.replace("+", "%2B"), Charsets.UTF_8.name())
         }.getOrNull() ?: return null
-        val target = runCatching { URI(null, null, decodedPath, null) }.getOrNull() ?: return null
-        val resolved = runCatching { base.resolve(target).normalize() }.getOrNull() ?: return null
-        if (resolved.isAbsolute || resolved.rawAuthority != null) return null
+        if (decodedPath.startsWith("//") || '\\' in decodedPath || '\u0000' in decodedPath ||
+            scheme.containsMatchIn(decodedPath)
+        ) {
+            return null
+        }
 
-        val absolutePath = resolved.path ?: return null
-        if (!absolutePath.startsWith('/')) return null
-        val relativePath = absolutePath.removePrefix("/")
-        val segments = RelativeGamePath.parse(relativePath) ?: return null
-        return segments.joinToString("/")
+        val segments = if (decodedPath.startsWith('/')) {
+            mutableListOf()
+        } else {
+            entryPoint.substringBeforeLast('/', missingDelimiterValue = "")
+                .split('/')
+                .filter { it.isNotEmpty() }
+                .toMutableList()
+        }
+        for (segment in decodedPath.removePrefix("/").split('/')) {
+            when (segment) {
+                "", "." -> Unit
+                ".." -> {
+                    if (segments.isEmpty()) return null
+                    segments.removeAt(segments.lastIndex)
+                }
+                else -> segments += segment
+            }
+        }
+
+        val relativePath = segments.joinToString("/")
+        val validated = RelativeGamePath.parse(relativePath) ?: return null
+        return validated.joinToString("/")
     }
 }
