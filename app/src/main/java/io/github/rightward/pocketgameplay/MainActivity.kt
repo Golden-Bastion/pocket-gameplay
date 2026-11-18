@@ -228,7 +228,7 @@ class MainActivity : Activity() {
         }
         page.addView(search, matchWidthWrapContent())
 
-        lateinit var renderGames: () -> Unit
+        var renderGames: () -> Unit = {}
         val sortButton = Button(this).apply {
             isAllCaps = false
             text = if (librarySortOrder == LibrarySortOrder.NAME) "Sort: A–Z" else "Sort: Recently added"
