@@ -266,8 +266,10 @@ class MainActivity : Activity() {
                 if (generation != scanGeneration || isFinishing || isDestroyed) return@post
 
                 if (root == null) {
+                    releaseFolderGrantIfUnused(treeUri)
                     showHome("Android could not open that folder.")
                 } else if (entries.isEmpty()) {
+                    releaseFolderGrantIfUnused(treeUri)
                     showHome("No .html or .htm files were found in that folder.")
                 } else {
                     chooseFolderEntryPoint(root, entries, originKey, treeUri)
@@ -320,6 +322,7 @@ class MainActivity : Activity() {
             libraryStore.add(game)
             openGame(root, entryPoint, originKey)
         } catch (exception: Exception) {
+            releaseFolderGrantIfUnused(treeUri)
             showHome("Could not save this folder game: " + (exception.message ?: "Unknown error."))
         }
     }
