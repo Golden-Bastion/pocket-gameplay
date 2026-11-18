@@ -124,7 +124,7 @@ jobs:
           minor="${BASH_REMATCH[2]}"
           patch="${BASH_REMATCH[3]}"
 
-          if (( ${#major} > 4 || ${#minor} > 3 || ${#patch} > 3 )) ||              (( 10#$minor > 999 || 10#$patch > 999 )); then
+          if (( ${#major} > 4 || ${#minor} > 3 || ${#patch} > 3 )); then
             echo "::error::Release tag components exceed the supported Android version-code range."
             exit 1
           fi
