@@ -25,4 +25,4 @@ The configured tools include Console, Elements, Network, Resources, Sources, Inf
 - Eruda runs in the same JavaScript realm as the game. A game can inspect, modify, or interfere with the injected developer tools; this is a debugging aid, not a security boundary.
 - The developer console may affect performance and should be closed during normal play.
 
-Eruda is distributed under the MIT License. Its license notice is included in the APK assets at `developer/LICENSE`. The exact bundled version and package source are recorded in `developer/VERSION.txt`.
+Eruda is distributed under the MIT License. Its license notice is included in the APK assets as `ERUDA-LICENSE.txt`. The exact bundled version and package source are recorded in `ERUDA-VERSION.txt`.
