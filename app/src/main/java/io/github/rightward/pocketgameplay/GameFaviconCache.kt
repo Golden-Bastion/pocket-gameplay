@@ -68,9 +68,11 @@ class GameFaviconCache(
     }
 
     private fun readDocument(document: DocumentFile, limit: Int): ByteArray? {
-        val stream = runCatching { contentResolver.openInputStream(document.uri) }.getOrNull()
-            ?: return null
-        return stream.use { input -> readBounded(input, limit) }
+        return runCatching {
+            contentResolver.openInputStream(document.uri)?.use { input ->
+                readBounded(input, limit)
+            }
+        }.getOrNull()
     }
 
     private fun readBounded(input: InputStream, limit: Int): ByteArray? {
