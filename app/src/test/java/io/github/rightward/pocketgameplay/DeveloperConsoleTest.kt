@@ -1,5 +1,6 @@
 package io.github.rightward.pocketgameplay
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,16 +18,25 @@ class DeveloperConsoleTest {
         assertTrue(script.contains("if (state.loading)"))
         assertTrue(script.contains("state.initialized"))
         assertTrue(script.contains("window.eruda.init"))
-        assertTrue(script.contains("entryButton.hide()"))
+        assertFalse(script.contains("entryButton.hide()"))
     }
 
     @Test
-    fun nativeToggleCanShowAndHideTheConsole() {
+    fun nativeToggleUsesDocumentedShowSequenceAndCanHideTheConsole() {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
+        assertTrue(script.contains("window.eruda.show();"))
         assertTrue(script.contains("window.eruda.show('console')"))
         assertTrue(script.contains("window.eruda.hide()"))
         assertTrue(script.contains("state.visible"))
+    }
+
+    @Test
+    fun keepsErudaFloatingEntryButtonAvailable() {
+        val script = DeveloperConsole.TOGGLE_SCRIPT
+
+        assertFalse(script.contains("entryButton.hide()"))
+        assertTrue(script.contains("Keep Eruda's floating entry button visible"))
     }
 
     @Test
@@ -47,8 +57,8 @@ class DeveloperConsoleTest {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
         assertTrue(script.contains("script.src = '/__pocket/eruda.js'"))
-        assertTrue(!script.contains("https://"))
-        assertTrue(!script.contains("http://"))
+        assertFalse(script.contains("https://"))
+        assertFalse(script.contains("http://"))
     }
 
     @Test
