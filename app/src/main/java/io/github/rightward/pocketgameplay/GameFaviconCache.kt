@@ -34,10 +34,8 @@ class GameFaviconCache(
             remove(gameId)
             return false
         }
-        val html = readDocument(htmlFile, MAX_HTML_BYTES)?.toString(Charsets.UTF_8) ?: run {
-            remove(gameId)
-            return false
-        }
+        // If the page is too large or unreadable, still try the conventional favicon paths.
+        val html = readDocument(htmlFile, MAX_HTML_BYTES)?.toString(Charsets.UTF_8).orEmpty()
 
         for (path in GameFaviconResolver.candidates(html, entryPoint)) {
             val iconDocument = findDocument(gameRoot, path) ?: continue
