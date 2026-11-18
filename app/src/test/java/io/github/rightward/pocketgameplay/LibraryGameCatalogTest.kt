@@ -14,6 +14,19 @@ class LibraryGameCatalogTest {
     }
 
     @Test
+    fun zipReplacementIsAvailableOnlyForImportedCopies() {
+        val imported = game("imported", "Imported game", "index.html")
+        val folder = imported.copy(
+            storageType = LibraryStorageType.FOLDER,
+            directoryName = "",
+            sourceUri = "content://provider/tree/folder"
+        )
+
+        org.junit.Assert.assertTrue(LibraryGameCatalog.supportsZipReplacement(imported))
+        org.junit.Assert.assertFalse(LibraryGameCatalog.supportsZipReplacement(folder))
+    }
+
+    @Test
     fun alphabeticalSortUsesStableIdTieBreak() {
         val games = listOf(game("z", "Same", "index.html"), game("a", "same", "index.html"))
 
