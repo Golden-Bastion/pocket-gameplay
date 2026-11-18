@@ -406,7 +406,7 @@ class MainActivity : Activity() {
                     isAllCaps = false
                     textSize = 12f
                     minWidth = 0
-                    minHeight = dp(40)
+                    minHeight = dp(48)
                     setPadding(dp(8), 0, dp(8), 0)
                     setOnClickListener {
                         when (primaryLabel) {
@@ -420,7 +420,7 @@ class MainActivity : Activity() {
                     primaryButton,
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(42)
+                        dp(48)
                     ).apply {
                         marginStart = dp(6)
                     }
