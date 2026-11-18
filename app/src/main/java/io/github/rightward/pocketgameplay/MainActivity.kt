@@ -221,16 +221,17 @@ class MainActivity : Activity() {
         val search = EditText(this).apply {
             hint = "Search games by title or start page"
             inputType = InputType.TYPE_CLASS_TEXT
-            singleLine = true
+            setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         page.addView(search, matchWidthWrapContent())
 
+        lateinit var renderGames: () -> Unit
         val sortButton = Button(this).apply {
             isAllCaps = false
-            text = "Sort: A–Z"
+            text = if (librarySortOrder == LibrarySortOrder.NAME) "Sort: A–Z" else "Sort: Recently added"
             setOnClickListener {
                 librarySortOrder = if (librarySortOrder == LibrarySortOrder.NAME) {
                     LibrarySortOrder.RECENTLY_ADDED
@@ -265,7 +266,7 @@ class MainActivity : Activity() {
             })
         }
 
-        fun renderGames() {
+        renderGames = {
             results.removeAllViews()
             val filtered = LibraryGameCatalog.filterAndSort(
                 games,
@@ -823,7 +824,12 @@ class MainActivity : Activity() {
         try {
             validateFolderEntryPoint(root, entryPoint.relativePath)
             val uriValue = treeUri.toString()
-            val game = LibraryGame(
+            val existingGame = libraryStore.all().firstOrNull {
+                it.storageType == LibraryStorageType.FOLDER &&
+                    it.sourceUri == uriValue &&
+                    it.entryPoint == entryPoint.relativePath
+            }
+            val game = existingGame ?: LibraryGame(
                 id = FolderGameId.create(uriValue, entryPoint.relativePath),
                 title = root.name?.takeIf { it.isNotBlank() } ?: "Folder game",
                 directoryName = "",
@@ -839,7 +845,7 @@ class MainActivity : Activity() {
                     ""
                 }
             )
-            libraryStore.add(game)
+            if (existingGame == null) libraryStore.add(game)
             openGame(root, entryPoint, game)
         } catch (exception: Exception) {
             releaseFolderGrantIfUnused(treeUri)
