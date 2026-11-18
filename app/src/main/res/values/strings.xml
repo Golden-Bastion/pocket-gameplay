@@ -20,4 +20,5 @@
     <string name="toggle_fullscreen">Fullscreen</string>
     <string name="exit_fullscreen">Exit fullscreen</string>
     <string name="close_controls">Close controls</string>
+    <string name="press_back_again_to_exit">Press Back again to exit</string>
 </resources>
