@@ -40,6 +40,53 @@ class ZipGameImporterTest {
     }
 
     @Test
+    fun publishesReplacementContentsUnderExistingLibraryIdentifier() {
+        withTemporaryDirectory { directory ->
+            val games = File(directory, "games")
+            val importer = ZipGameImporter(games)
+            val staged = importer.extract(
+                zipOf("replacement/index.html" to "<html>replacement</html>"),
+                "replacement.zip"
+            )
+
+            try {
+                val published = staged.publish(games, "existing-library-id")
+                assertEquals("existing-library-id", published.name)
+                assertTrue(File(published, "replacement/index.html").isFile)
+                assertFalse(staged.stagingDirectory.exists())
+                staged.cleanup()
+                assertTrue(published.isDirectory)
+            } finally {
+                staged.cleanup()
+            }
+        }
+    }
+
+    @Test
+    fun rejectsUnsafeReplacementTargetWithoutPublishingOrEscapingGamesDirectory() {
+        withTemporaryDirectory { directory ->
+            val games = File(directory, "games")
+            val importer = ZipGameImporter(games)
+            val staged = importer.extract(
+                zipOf("index.html" to "<html>game</html>"),
+                "game.zip"
+            )
+
+            try {
+                try {
+                    staged.publish(games, "../outside")
+                    throw AssertionError("Expected unsafe target rejection.")
+                } catch (expected: ZipImportException) {
+                    assertTrue(staged.stagingDirectory.isDirectory)
+                    assertFalse(File(directory, "outside").exists())
+                }
+            } finally {
+                staged.cleanup()
+            }
+        }
+    }
+
+    @Test
     fun rejectsTraversalAndCleansStagingDirectory() {
         withTemporaryDirectory { directory ->
             val games = File(directory, "games")

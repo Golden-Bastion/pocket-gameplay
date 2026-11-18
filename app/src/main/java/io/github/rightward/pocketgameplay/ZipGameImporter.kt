@@ -24,10 +24,21 @@ data class StagedGame(
 ) {
     private var published = false
 
-    fun publish(gamesDirectory: File): File {
+    fun publish(gamesDirectory: File, targetDirectoryName: String = id): File {
         check(!published) { "This staged game has already been published." }
+        if (targetDirectoryName.isBlank() ||
+            targetDirectoryName == "." ||
+            targetDirectoryName == ".." ||
+            File(targetDirectoryName).name != targetDirectoryName
+        ) {
+            throw ZipImportException("The target game storage identifier is invalid.")
+        }
 
-        val destination = File(gamesDirectory, id)
+        val base = gamesDirectory.canonicalFile
+        val destination = File(base, targetDirectoryName).canonicalFile
+        if (!destination.path.startsWith(base.path + File.separator)) {
+            throw ZipImportException("The target game storage path is invalid.")
+        }
         if (destination.exists()) {
             throw ZipImportException("A game with this storage identifier already exists.")
         }

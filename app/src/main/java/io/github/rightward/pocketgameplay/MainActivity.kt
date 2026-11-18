@@ -13,6 +13,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.text.InputType
+import android.text.TextWatcher
+import android.text.Editable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -26,16 +29,19 @@ import android.webkit.ValueCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
+import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.io.File
 import java.io.IOException
-import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -54,6 +60,11 @@ class MainActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
+    private var currentWebViewProfile: String? = null
+    private var currentWebViewGameId: String? = null
+    private var librarySortOrder = LibrarySortOrder.NAME
+    private var pendingFolderReconnect: LibraryGame? = null
+    private var pendingZipReplacement: LibraryGame? = null
     private var developerConsoleButton: Button? = null
     private var playerControlsButton: Button? = null
     private var playerControlsPanel: LinearLayout? = null
@@ -188,7 +199,7 @@ class MainActivity : Activity() {
 
     private fun addLibraryItems(page: LinearLayout) {
         val games = try {
-            libraryStore.all().sortedBy { it.title.lowercase() }
+            libraryStore.all()
         } catch (_: IOException) {
             page.addView(TextView(this).apply {
                 text = getString(R.string.library_read_error)
@@ -207,50 +218,475 @@ class MainActivity : Activity() {
             return
         }
 
-        games.forEach { game ->
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                setBackgroundColor(Color.rgb(31, 33, 38))
-            }
+        val search = EditText(this).apply {
+            hint = "Search games by title or start page"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        page.addView(search, matchWidthWrapContent())
 
-            card.addView(TextView(this).apply {
-                text = game.title
-                textSize = 17f
-                setTextColor(Color.WHITE)
-            }, matchWidthWrapContent())
-
-            card.addView(TextView(this).apply {
-                text = game.entryPoint
-                textSize = 12f
-                setTextColor(Color.LTGRAY)
-                setPadding(0, dp(4), 0, dp(8))
-            }, matchWidthWrapContent())
-
-            val actions = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            actions.addView(Button(this).apply {
-                text = getString(R.string.play_game)
-                isAllCaps = false
-                setOnClickListener { playLibraryGame(game) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
-            actions.addView(Button(this).apply {
-                text = getString(R.string.remove_game)
-                isAllCaps = false
-                setOnClickListener { confirmRemoveGame(game) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
-
-            card.addView(actions, matchWidthWrapContent())
-            page.addView(
-                card,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(10)
+        var renderGames: () -> Unit = {}
+        val sortButton = Button(this).apply {
+            isAllCaps = false
+            text = if (librarySortOrder == LibrarySortOrder.NAME) "Sort: A–Z" else "Sort: Recently added"
+            setOnClickListener {
+                librarySortOrder = if (librarySortOrder == LibrarySortOrder.NAME) {
+                    LibrarySortOrder.RECENTLY_ADDED
+                } else {
+                    LibrarySortOrder.NAME
                 }
+                text = if (librarySortOrder == LibrarySortOrder.NAME) {
+                    "Sort: A–Z"
+                } else {
+                    "Sort: Recently added"
+                }
+                renderGames()
+            }
+        }
+        page.addView(sortButton, matchWidthWrapContent())
+
+        val results = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        page.addView(results, matchWidthWrapContent())
+
+        fun addAction(row: LinearLayout, label: String, action: () -> Unit) {
+            row.addView(Button(this).apply {
+                text = label
+                isAllCaps = false
+                textSize = 12f
+                minWidth = 0
+                setPadding(dp(2), 0, dp(2), 0)
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                marginEnd = dp(3)
+            })
+        }
+
+        renderGames = render@{
+            results.removeAllViews()
+            val filtered = LibraryGameCatalog.filterAndSort(
+                games,
+                search.text?.toString().orEmpty(),
+                librarySortOrder
             )
+            if (filtered.isEmpty()) {
+                results.addView(TextView(this).apply {
+                    text = "No games match your search."
+                    setTextColor(Color.LTGRAY)
+                    textSize = 14f
+                    setPadding(0, dp(12), 0, dp(12))
+                }, matchWidthWrapContent())
+                return@render
+            }
+
+            filtered.forEach { game ->
+                val problem = libraryGameProblem(game)
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    setBackgroundColor(Color.rgb(31, 33, 38))
+                }
+
+                card.addView(TextView(this).apply {
+                    text = game.title
+                    textSize = 17f
+                    setTextColor(Color.WHITE)
+                }, matchWidthWrapContent())
+
+                val storageLabel = if (game.storageType == LibraryStorageType.FOLDER) {
+                    "Folder shortcut"
+                } else {
+                    "Imported ZIP copy"
+                }
+                card.addView(TextView(this).apply {
+                    text = storageLabel + " · Start page: " + game.entryPoint
+                    textSize = 12f
+                    setTextColor(Color.LTGRAY)
+                    setPadding(0, dp(4), 0, dp(6))
+                }, matchWidthWrapContent())
+
+                if (problem != null) {
+                    card.addView(TextView(this).apply {
+                        text = problem
+                        textSize = 12f
+                        setTextColor(Color.rgb(255, 190, 120))
+                        setPadding(0, 0, 0, dp(8))
+                    }, matchWidthWrapContent())
+                }
+
+                val primaryActions = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                if (problem == null) {
+                    addAction(primaryActions, "Play") { playLibraryGame(game) }
+                } else if (game.storageType == LibraryStorageType.FOLDER) {
+                    addAction(primaryActions, "Reconnect") { requestFolderReconnect(game) }
+                } else {
+                    addAction(primaryActions, "Replace ZIP") { requestZipReplacement(game) }
+                }
+                addAction(primaryActions, "Rename") { renameLibraryGame(game) }
+                addAction(primaryActions, "Details") { showGameDetails(game) }
+                card.addView(primaryActions, matchWidthWrapContent())
+
+                val secondaryActions = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                val dataActionLabel = when {
+                    game.browserProfile.isBlank() && supportsPerGameProfiles() -> "Isolate saves"
+                    game.browserProfile.isNotBlank() && supportsPerGameProfiles() -> "Clear data"
+                    else -> "Data reset unavailable"
+                }
+                addAction(secondaryActions, dataActionLabel) {
+                    when {
+                        !supportsPerGameProfiles() -> isolateGameSaves(game)
+                        game.browserProfile.isBlank() -> isolateGameSaves(game)
+                        else -> confirmClearGameData(game)
+                    }
+                }
+                addAction(secondaryActions, "Remove") { confirmRemoveGame(game) }
+                card.addView(secondaryActions, matchWidthWrapContent())
+
+                results.addView(
+                    card,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = dp(10)
+                    }
+                )
+            }
+        }
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+                renderGames()
+            }
+            override fun afterTextChanged(editable: Editable?) = Unit
+        })
+        renderGames()
+    }
+
+    private fun hasFolderReadGrant(uri: Uri): Boolean {
+        return contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission
+        }
+    }
+
+    private fun libraryGameProblem(game: LibraryGame): String? {
+        return try {
+            when (game.storageType) {
+                LibraryStorageType.IMPORTED -> resolveGameRoot(game)
+                LibraryStorageType.FOLDER -> {
+                    if (!hasFolderReadGrant(Uri.parse(game.sourceUri))) {
+                        return "Folder access was revoked. Reconnect this folder to play."
+                    }
+                }
+                else -> throw IOException("Unsupported game storage type.")
+            }
+            null
+        } catch (_: Exception) {
+            if (game.storageType == LibraryStorageType.FOLDER) {
+                "The folder or saved start page is unavailable. Reconnect to choose it again."
+            } else {
+                "The imported files are missing or incomplete. Replace the ZIP archive."
+            }
+        }
+    }
+
+    private fun renameLibraryGame(game: LibraryGame) {
+        val titleField = EditText(this).apply {
+            setText(game.title)
+            setSelection(text.length)
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Rename game")
+            .setView(titleField)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ ->
+                try {
+                    if (!libraryStore.rename(game.id, titleField.text.toString())) {
+                        throw IOException("This library entry no longer exists.")
+                    }
+                    showHome()
+                } catch (exception: IOException) {
+                    showHome("Could not rename this game: " + (exception.message ?: "Invalid title."))
+                }
+            }
+            .show()
+    }
+
+    private fun showGameDetails(game: LibraryGame) {
+        val storageDescription = if (game.storageType == LibraryStorageType.FOLDER) {
+            "Selected folder shortcut (original files remain in place)"
+        } else {
+            "Imported ZIP copy (stored inside Pocket Gameplay)"
+        }
+        val dataDescription = when {
+            game.browserProfile.isNotBlank() && supportsPerGameProfiles() -> "Dedicated browser profile"
+            game.browserProfile.isNotBlank() -> "Dedicated profile saved; current WebView cannot access it"
+            supportsPerGameProfiles() -> "Legacy shared profile; can be isolated"
+            else -> "Legacy shared profile; this WebView cannot isolate it"
+        }
+        AlertDialog.Builder(this)
+            .setTitle(game.title)
+            .setMessage(
+                "Storage: $storageDescription\n\n" +
+                    "Start page: " + game.entryPoint + "\n\n" +
+                    "Save data: $dataDescription"
+            )
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun requestFolderReconnect(game: LibraryGame) {
+        pendingFolderReconnect = game
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+        try {
+            startActivityForResult(intent, REQUEST_FOLDER_RECONNECT)
+        } catch (_: Exception) {
+            pendingFolderReconnect = null
+            showHome("No folder picker is available.")
+        }
+    }
+
+    private fun reconnectFolderGame(game: LibraryGame, treeUri: Uri, grantFlags: Int) {
+        val readGrant = grantFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if (readGrant == 0) {
+            showHome("Android did not grant read access to that folder.")
+            return
+        }
+        try {
+            contentResolver.takePersistableUriPermission(treeUri, readGrant)
+        } catch (exception: Exception) {
+            releaseFolderGrantIfUnused(treeUri)
+            showHome("Could not retain access to that folder: " + (exception.message ?: "Please select it again."))
+            return
+        }
+
+        worker.execute {
+            try {
+                val root = DocumentFile.fromTreeUri(this, treeUri)
+                    ?: throw IOException("Android could not open the selected folder.")
+                val existingEntryPoint = runCatching {
+                    validateFolderEntryPoint(root, game.entryPoint)
+                    game.entryPoint
+                }.getOrNull()
+                val alternatives = if (existingEntryPoint == null) {
+                    GameEntryPointScanner.scan(root)
+                } else {
+                    emptyList()
+                }
+
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) {
+                        releaseFolderGrantIfUnused(treeUri)
+                    } else if (existingEntryPoint != null) {
+                        finishFolderReconnect(game, treeUri, existingEntryPoint)
+                    } else if (alternatives.isEmpty()) {
+                        releaseFolderGrantIfUnused(treeUri)
+                        showHome("No HTML or HTM start pages were found in that folder.")
+                    } else if (alternatives.size == 1) {
+                        finishFolderReconnect(game, treeUri, alternatives.first().relativePath)
+                    } else {
+                        chooseReconnectedFolderEntryPoint(game, treeUri, alternatives)
+                    }
+                }
+            } catch (exception: Exception) {
+                mainHandler.post {
+                    releaseFolderGrantIfUnused(treeUri)
+                    if (!isFinishing && !isDestroyed) {
+                        showHome(exception.message ?: "Android could not open the selected folder.")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun chooseReconnectedFolderEntryPoint(
+        game: LibraryGame,
+        treeUri: Uri,
+        entries: List<HtmlEntryPoint>
+    ) {
+        AlertDialog.Builder(this)
+            .setTitle("Choose the replacement start page")
+            .setItems(entries.map { it.relativePath }.toTypedArray()) { _, selected ->
+                finishFolderReconnect(game, treeUri, entries[selected].relativePath)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                releaseFolderGrantIfUnused(treeUri)
+                showHome()
+            }
+            .setOnCancelListener {
+                releaseFolderGrantIfUnused(treeUri)
+            }
+            .show()
+    }
+
+    private fun finishFolderReconnect(game: LibraryGame, treeUri: Uri, entryPoint: String) {
+        try {
+            val originalUri = Uri.parse(game.sourceUri)
+            val retainedOrigin = game.originKey.ifBlank {
+                GameOrigin.forFolderUri(game.sourceUri)
+            }
+            val updated = game.copy(
+                sourceUri = treeUri.toString(),
+                entryPoint = entryPoint,
+                originKey = retainedOrigin
+            )
+            if (!libraryStore.update(updated)) {
+                throw IOException("The library entry no longer exists.")
+            }
+            if (originalUri != treeUri) releaseFolderGrantIfUnused(originalUri)
+            showHome("Folder access restored. This game's saved browser data was retained.")
+        } catch (exception: Exception) {
+            releaseFolderGrantIfUnused(treeUri)
+            showHome("Could not restore folder access: " + (exception.message ?: "Unknown error."))
+        }
+    }
+
+    private fun requestZipReplacement(game: LibraryGame) {
+        pendingZipReplacement = game
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
+            )
+        }
+        try {
+            startActivityForResult(intent, REQUEST_ZIP_REPLACEMENT)
+        } catch (_: Exception) {
+            pendingZipReplacement = null
+            showHome("No file picker is available.")
+        }
+    }
+
+    private fun replaceImportedGameArchive(game: LibraryGame, uri: Uri) {
+        if (game.storageType != LibraryStorageType.IMPORTED) {
+            showHome("Only imported ZIP games can be replaced this way.")
+            return
+        }
+        val archiveName = displayNameFor(uri)
+        showHome("Importing replacement for " + game.title + "…")
+
+        worker.execute {
+            var staged: StagedGame? = null
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Android could not open the selected archive.")
+                staged = zipImporter.extract(input, archiveName)
+                val root = File(staged.stagingDirectory, staged.rootPath)
+                val entries = GameEntryPointScanner.scan(DocumentFile.fromFile(root))
+                if (entries.isEmpty()) {
+                    throw IOException("The replacement archive does not contain an HTML or HTM file.")
+                }
+
+                val completedStage = staged
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) {
+                        completedStage.cleanup()
+                    } else {
+                        chooseZipReplacementEntryPoint(game, completedStage, entries)
+                    }
+                }
+            } catch (exception: Exception) {
+                staged?.cleanup()
+                val reason = exception.message ?: "Unknown import error."
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed) {
+                        showHome("Replacement failed: " + reason)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun chooseZipReplacementEntryPoint(
+        game: LibraryGame,
+        staged: StagedGame,
+        entries: List<HtmlEntryPoint>
+    ) {
+        if (entries.size == 1) {
+            finishZipReplacement(game, staged, entries.first())
+            return
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Choose the replacement game's start page")
+            .setItems(entries.map { it.relativePath }.toTypedArray()) { _, selected ->
+                finishZipReplacement(game, staged, entries[selected])
+            }
+            .setNegativeButton("Cancel") { _, _ -> staged.cleanup() }
+            .create()
+        dialog.setOnCancelListener { staged.cleanup() }
+        dialog.show()
+    }
+
+    private fun finishZipReplacement(
+        game: LibraryGame,
+        staged: StagedGame,
+        entryPoint: HtmlEntryPoint
+    ) {
+        val base = gamesDirectory.canonicalFile
+        val destination = File(base, game.directoryName).canonicalFile
+        if (!destination.path.startsWith(base.path + File.separator) ||
+            game.directoryName != game.id
+        ) {
+            staged.cleanup()
+            showHome("The imported game's storage identifier is invalid.")
+            return
+        }
+
+        val backup = File(base, ".backup-" + game.id + "-" + System.nanoTime())
+        var movedOriginal = false
+        var publishedReplacement = false
+        try {
+            if (currentWebViewGameId == game.id) destroyWebView()
+            if (destination.exists()) {
+                if (!destination.renameTo(backup)) {
+                    throw IOException("Could not protect the previous imported files before replacement.")
+                }
+                movedOriginal = true
+            }
+
+            staged.publish(gamesDirectory, game.directoryName)
+            publishedReplacement = true
+            val updated = game.copy(
+                rootPath = staged.rootPath,
+                entryPoint = entryPoint.relativePath
+            )
+            if (!libraryStore.update(updated)) {
+                throw IOException("The library entry no longer exists.")
+            }
+
+            if (movedOriginal) backup.deleteRecursively()
+            showHome("Game files replaced. The library identity and isolated save data were retained.")
+        } catch (exception: Exception) {
+            val newDirectory = File(base, game.directoryName)
+            if (publishedReplacement && newDirectory.exists()) newDirectory.deleteRecursively()
+            val restored = !movedOriginal || !backup.exists() || backup.renameTo(destination)
+            staged.cleanup()
+            val detail = if (restored) {
+                exception.message ?: "Unknown replacement error."
+            } else {
+                "Replacement failed and the previous files remain in " + backup.name + "."
+            }
+            showHome("Could not replace the game: " + detail)
         }
     }
 
@@ -287,6 +723,22 @@ class MainActivity : Activity() {
             }
             REQUEST_GAME_DOWNLOAD -> {
                 finishGameDownload(resultCode, data)
+                return
+            }
+            REQUEST_FOLDER_RECONNECT -> {
+                val game = pendingFolderReconnect
+                pendingFolderReconnect = null
+                if (resultCode == RESULT_OK && game != null && data?.data != null) {
+                    reconnectFolderGame(game, data.data!!, data.flags)
+                }
+                return
+            }
+            REQUEST_ZIP_REPLACEMENT -> {
+                val game = pendingZipReplacement
+                pendingZipReplacement = null
+                if (resultCode == RESULT_OK && game != null && data?.data != null) {
+                    replaceImportedGameArchive(game, data.data!!)
+                }
                 return
             }
         }
@@ -372,7 +824,12 @@ class MainActivity : Activity() {
         try {
             validateFolderEntryPoint(root, entryPoint.relativePath)
             val uriValue = treeUri.toString()
-            val game = LibraryGame(
+            val existingGame = libraryStore.all().firstOrNull {
+                it.storageType == LibraryStorageType.FOLDER &&
+                    it.sourceUri == uriValue &&
+                    it.entryPoint == entryPoint.relativePath
+            }
+            val game = existingGame ?: LibraryGame(
                 id = FolderGameId.create(uriValue, entryPoint.relativePath),
                 title = root.name?.takeIf { it.isNotBlank() } ?: "Folder game",
                 directoryName = "",
@@ -380,10 +837,16 @@ class MainActivity : Activity() {
                 entryPoint = entryPoint.relativePath,
                 importedAtEpochMillis = System.currentTimeMillis(),
                 storageType = LibraryStorageType.FOLDER,
-                sourceUri = uriValue
+                sourceUri = uriValue,
+                originKey = originKey,
+                browserProfile = if (supportsPerGameProfiles()) {
+                    GameBrowserProfile.forGameId(FolderGameId.create(uriValue, entryPoint.relativePath))
+                } else {
+                    ""
+                }
             )
-            libraryStore.add(game)
-            openGame(root, entryPoint, originKey)
+            if (existingGame == null) libraryStore.add(game)
+            openGame(root, entryPoint, game)
         } catch (exception: Exception) {
             releaseFolderGrantIfUnused(treeUri)
             showHome("Could not save this folder game: " + (exception.message ?: "Unknown error."))
@@ -470,12 +933,18 @@ class MainActivity : Activity() {
                 directoryName = staged.id,
                 rootPath = staged.rootPath,
                 entryPoint = entryPoint.relativePath,
-                importedAtEpochMillis = System.currentTimeMillis()
+                importedAtEpochMillis = System.currentTimeMillis(),
+                originKey = staged.id,
+                browserProfile = if (supportsPerGameProfiles()) {
+                    GameBrowserProfile.forGameId(staged.id)
+                } else {
+                    ""
+                }
             )
             libraryStore.add(game)
 
             val root = resolveGameRoot(game)
-            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game)
         } catch (exception: Exception) {
             runCatching { libraryStore.remove(staged.id) }
             publishedDirectory?.deleteRecursively()
@@ -489,7 +958,7 @@ class MainActivity : Activity() {
             when (game.storageType) {
                 LibraryStorageType.IMPORTED -> {
                     val root = resolveGameRoot(game)
-                    openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
+                    openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game)
                 }
                 LibraryStorageType.FOLDER -> {
                     val treeUri = Uri.parse(game.sourceUri)
@@ -503,12 +972,24 @@ class MainActivity : Activity() {
                     val root = DocumentFile.fromTreeUri(this, treeUri)
                         ?: throw IOException("The selected folder is no longer available.")
                     validateFolderEntryPoint(root, game.entryPoint)
-                    openGame(root, HtmlEntryPoint(game.entryPoint), GameOrigin.forFolderUri(game.sourceUri))
+                    openGame(root, HtmlEntryPoint(game.entryPoint), game)
                 }
                 else -> throw IOException("This library item has an unsupported storage type.")
             }
-        } catch (exception: IOException) {
-            showHome(exception.message ?: "This game is unavailable. Remove it and add it again.")
+        } catch (exception: Exception) {
+            if (game.storageType == LibraryStorageType.FOLDER) {
+                AlertDialog.Builder(this)
+                    .setTitle("Folder access needs attention")
+                    .setMessage(
+                        exception.message ?: "The selected folder or saved start page is unavailable."
+                    )
+                    .setNegativeButton("Cancel", null)
+                    .setNeutralButton("Remove shortcut") { _, _ -> removeLibraryGame(game) }
+                    .setPositiveButton("Reconnect") { _, _ -> requestFolderReconnect(game) }
+                    .show()
+            } else {
+                showHome(exception.message ?: "This imported game is unavailable. Replace its ZIP archive or remove it.")
+            }
         }
     }
 
@@ -570,6 +1051,117 @@ class MainActivity : Activity() {
         return root
     }
 
+    private fun supportsPerGameProfiles(): Boolean {
+        return WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+    }
+
+    private fun isolateGameSaves(game: LibraryGame) {
+        if (!supportsPerGameProfiles()) {
+            AlertDialog.Builder(this)
+                .setTitle("Per-game saves are unavailable")
+                .setMessage(
+                    "Update Android System WebView to a version that supports isolated profiles. " +
+                        "This device currently cannot safely separate or clear one game's browser data."
+                )
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        if (game.browserProfile.isNotBlank()) {
+            confirmClearGameData(game)
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Isolate saves for " + game.title + "?")
+            .setMessage(
+                "This game still uses the older shared WebView profile. Pocket Gameplay will " +
+                    "switch it to a new private profile. Existing saves in the shared profile " +
+                    "will not be copied or deleted, and this game will start with fresh data."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Isolate saves") { _, _ ->
+                val retainedOrigin = game.originKey.ifBlank {
+                    if (game.storageType == LibraryStorageType.FOLDER) {
+                        GameOrigin.forFolderUri(game.sourceUri)
+                    } else {
+                        game.id
+                    }
+                }
+                try {
+                    val updated = game.copy(
+                        originKey = retainedOrigin,
+                        browserProfile = GameBrowserProfile.forGameId(game.id)
+                    )
+                    if (!libraryStore.update(updated)) {
+                        throw IOException("The library entry no longer exists.")
+                    }
+                    showHome("This game now has an isolated save profile. Its old shared saves were left untouched.")
+                } catch (exception: IOException) {
+                    showHome("Could not isolate this game's saves: " + (exception.message ?: "Unknown error."))
+                }
+            }
+            .show()
+    }
+
+    private fun confirmClearGameData(game: LibraryGame) {
+        if (game.browserProfile.isBlank()) {
+            isolateGameSaves(game)
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Clear data for " + game.title + "?")
+            .setMessage(
+                "This permanently clears this game's local saves, site storage, cookies, " +
+                    "cache, IndexedDB and service workers. Other games' profiles are not affected."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear data") { _, _ ->
+                clearGameData(game)
+            }
+            .show()
+    }
+
+    private fun clearGameData(game: LibraryGame) {
+        if (!supportsPerGameProfiles()) {
+            showHome("Per-game data clearing is not supported by this System WebView.")
+            return
+        }
+
+        try {
+            if (currentWebViewGameId == game.id) destroyWebView()
+            ProfileStore.getInstance().deleteProfile(game.browserProfile)
+            showHome("A data reset was requested. The game's profile will be recreated the next time it is played.")
+        } catch (exception: Exception) {
+            showHome("Could not clear this game's data: " + (exception.message ?: "Unknown error."))
+        }
+    }
+
+    /** Deletes only a named profile. Legacy games share the default profile, which is never deleted. */
+    private fun deleteBrowserProfile(game: LibraryGame) {
+        if (game.browserProfile.isBlank() || !supportsPerGameProfiles()) return
+        if (currentWebViewProfile == game.browserProfile) destroyWebView()
+
+        try {
+            ProfileStore.getInstance().deleteProfile(game.browserProfile)
+        } catch (exception: Exception) {
+            throw IOException("Could not delete this game's browser data.", exception)
+        }
+    }
+
+    private fun destroyWebView() {
+        webView?.let { view ->
+            view.stopLoading()
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.destroy()
+        }
+        webView = null
+        currentWebViewProfile = null
+        currentWebViewGameId = null
+    }
+
     private fun confirmRemoveGame(game: LibraryGame) {
         AlertDialog.Builder(this)
             .setTitle("Remove " + game.title + "?")
@@ -587,6 +1179,8 @@ class MainActivity : Activity() {
 
     private fun removeLibraryGame(game: LibraryGame) {
         try {
+            if (currentWebViewGameId == game.id) destroyWebView()
+            deleteBrowserProfile(game)
             when (game.storageType) {
                 LibraryStorageType.FOLDER -> removeFolderShortcut(game)
                 LibraryStorageType.IMPORTED -> removeImportedGame(game)
@@ -651,29 +1245,54 @@ class MainActivity : Activity() {
     }
 
     private fun cleanInterruptedImports() {
-        val storedIds = try {
-            libraryStore.all()
-                .filter { it.storageType == LibraryStorageType.IMPORTED }
-                .map { it.directoryName }
-                .toSet()
+        val storedGames = try {
+            libraryStore.all().filter { it.storageType == LibraryStorageType.IMPORTED }
         } catch (_: IOException) {
             null
+        }
+        val storedIds = storedGames?.map { it.directoryName }?.toSet()
+
+        storedGames?.forEach { game ->
+            val backupPrefix = ".backup-" + game.directoryName + "-"
+            val backups = gamesDirectory.listFiles()
+                ?.filter { it.isDirectory && it.name.startsWith(backupPrefix) }
+                .orEmpty()
+                .sortedByDescending { it.lastModified() }
+            if (backups.isNotEmpty()) {
+                val destination = File(gamesDirectory, game.directoryName)
+                val currentIsValid = runCatching { resolveGameRoot(game) }.isSuccess
+                if (currentIsValid) {
+                    backups.forEach { it.deleteRecursively() }
+                } else {
+                    val backup = backups.first()
+                    if (destination.exists()) destination.deleteRecursively()
+                    if (backup.renameTo(destination)) {
+                        backups.filterNot { it == backup }.forEach { it.deleteRecursively() }
+                    }
+                }
+            }
         }
 
         gamesDirectory.listFiles()?.forEach { directory ->
             if (directory.name.startsWith(".staging-")) {
                 directory.deleteRecursively()
+            } else if (directory.name.startsWith(".backup-")) {
+                // Keep a backup if startup restoration could not safely move it into place.
             } else if (storedIds != null && directory.name !in storedIds) {
                 directory.deleteRecursively()
             }
         }
     }
 
-    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, originKey: String) {
+    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, game: LibraryGame) {
         cancelPendingFileChooser()
         webView?.stopLoading()
         pathHandler.setGameRoot(root)
 
+        val originKey = game.originKey.takeIf { it.isNotBlank() } ?: when (game.storageType) {
+            LibraryStorageType.FOLDER -> GameOrigin.forFolderUri(game.sourceUri)
+            else -> game.id
+        }
         val assetHost = GameOrigin.domainFor(originKey)
         currentGameAssetHost = assetHost
         val assetLoader = WebViewAssetLoader.Builder()
@@ -683,7 +1302,8 @@ class MainActivity : Activity() {
                 WebViewAssetLoader.AssetsPathHandler(this)
             )
             .build()
-        showPlayer(assetLoader, assetHost)
+        showPlayer(assetLoader, assetHost, game.browserProfile)
+        currentWebViewGameId = game.id
 
         val encodedPath = entryPoint.relativePath
             .split('/')
@@ -692,11 +1312,26 @@ class MainActivity : Activity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showPlayer(assetLoader: WebViewAssetLoader, assetHost: String) {
+    private fun showPlayer(
+        assetLoader: WebViewAssetLoader,
+        assetHost: String,
+        profileName: String
+    ) {
         isPlaying = true
         content.removeAllViews()
 
+        val selectedProfile = profileName.takeIf {
+            it.isNotBlank() && supportsPerGameProfiles()
+        }
+        if (webView != null && currentWebViewProfile != selectedProfile) {
+            destroyWebView()
+        }
+
         val player = webView ?: WebView(this).also { view ->
+            if (selectedProfile != null) {
+                WebViewCompat.setProfile(view, selectedProfile)
+            }
+            currentWebViewProfile = selectedProfile
             view.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -766,6 +1401,8 @@ class MainActivity : Activity() {
                         crashed.destroy()
                     }
                     webView = null
+                    currentWebViewProfile = null
+                    currentWebViewGameId = null
                     showHome("The game renderer stopped unexpectedly.")
                 }
             }
@@ -857,12 +1494,7 @@ class MainActivity : Activity() {
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
-        webView?.apply {
-            stopLoading()
-            (parent as? ViewGroup)?.removeView(this)
-            destroy()
-        }
-        webView = null
+        destroyWebView()
         developerConsoleButton = null
         playerControlsButton = null
         playerControlsPanel = null
@@ -1253,5 +1885,7 @@ class MainActivity : Activity() {
         private const val REQUEST_GAME_ARCHIVE = 42
         private const val REQUEST_GAME_FILE_PICKER = 43
         private const val REQUEST_GAME_DOWNLOAD = 44
+        private const val REQUEST_FOLDER_RECONNECT = 45
+        private const val REQUEST_ZIP_REPLACEMENT = 46
     }
 }
