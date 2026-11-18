@@ -5,7 +5,6 @@ import android.webkit.WebResourceResponse
 import androidx.documentfile.provider.DocumentFile
 import java.io.ByteArrayInputStream
 import java.io.EOFException
-import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 
@@ -81,7 +80,7 @@ class GamePathHandler(
                         ?: return errorResponse(500, "Could Not Open Local File")
                     try {
                         skipFully(source, range.start)
-                        LimitedInputStream(source, bodyLength)
+                        BoundedInputStream(source, bodyLength)
                     } catch (_: IOException) {
                         source.close()
                         return errorResponse(500, "Could Not Read Local File")
@@ -164,34 +163,6 @@ class GamePathHandler(
                 if (read < 0) throw EOFException("Unexpected end of local file while seeking.")
                 remaining -= read
             }
-        }
-    }
-
-    private class LimitedInputStream(
-        input: InputStream,
-        private var remaining: Long
-    ) : FilterInputStream(input) {
-        override fun read(): Int {
-            if (remaining <= 0) return -1
-            val value = super.read()
-            if (value >= 0) remaining--
-            return value
-        }
-
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-            if (length == 0) return 0
-            if (remaining <= 0) return -1
-            val allowed = minOf(length.toLong(), remaining).toInt()
-            val read = super.read(buffer, offset, allowed)
-            if (read > 0) remaining -= read
-            return read
-        }
-
-        override fun skip(byteCount: Long): Long {
-            if (byteCount <= 0 || remaining <= 0) return 0
-            val skipped = super.skip(minOf(byteCount, remaining))
-            remaining -= skipped
-            return skipped
         }
     }
 
