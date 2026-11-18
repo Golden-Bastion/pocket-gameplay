@@ -9,6 +9,9 @@ enum class LibrarySortOrder {
 }
 
 object LibraryGameCatalog {
+    fun supportsZipReplacement(game: LibraryGame): Boolean =
+        game.storageType == LibraryStorageType.IMPORTED
+
     fun filterAndSort(
         games: List<LibraryGame>,
         query: String,
