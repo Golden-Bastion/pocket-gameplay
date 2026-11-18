@@ -24,7 +24,7 @@ If Android revokes a folder permission, or the saved start page disappears, **Re
 
 When the installed System WebView supports AndroidX WebKit's `MULTI_PROFILE` feature, every newly added game receives a deterministic named WebView profile based on its immutable library ID. The player attaches that profile to a fresh WebView before setting it up or navigating. This isolates profile-managed browser data, including cookies, localStorage/IndexedDB, caches and service-worker state, from other games.
 
-**Clear data** deletes the named profile for one game. Pocket Gameplay destroys its WebView first, then requests deletion through `ProfileStore.deleteProfile`. The WebView implementation may finish removing some data asynchronously. The profile is created again the next time the game is played. Removing a game also deletes its named profile when the feature is supported.
+**Clear data** immediately switches the game to a new, empty profile generation and stores the old profile name in a persistent cleanup queue. Pocket Gameplay detaches and destroys the WebView, then attempts to delete the old profile. Some WebView providers keep a profile marked as in-use until the app process exits; when that happens, the old name remains queued and is retried on the next cold app-process start, before a new game WebView is created. The game can be launched with clean saves immediately because its library record already points to the new profile. Removing a game uses the same cleanup queue, without risking another game's profile.
 
 ### Existing library entries
 

@@ -9,7 +9,7 @@ The Android package version is stored in `gradle.properties`:
 - `appVersionName` is the public `MAJOR.MINOR.PATCH` version.
 - `appVersionCode` is the Android integer version code used by normal debug builds.
 
-Before publishing a version, update both `appVersionName` and `appVersionCode` on `main`, commit those changes, and create a tag that matches them. Set `appVersionCode` to the value calculated by the formula below. Release tags must use `vMAJOR.MINOR.PATCH`, for example `v0.2.0`. The tag must point to a commit contained in `main`, and the version in the tagged `gradle.properties` must match the tag.
+Before publishing a version, update both `appVersionName` and `appVersionCode` on `main`, commit those changes, and create a tag that matches them. Set `appVersionCode` to the value calculated by the formula below. Release tags must use `vMAJOR.MINOR.PATCH`, for example `v1.0.0`. The tag must point to a commit contained in `main`, and the version in the tagged `gradle.properties` must match the tag.
 
 Release version codes are calculated from the tag as:
 
@@ -22,8 +22,8 @@ This keeps version codes increasing when MINOR and PATCH are each between 0 and 
 To publish automatically after preparing the version on `main`:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 The Android CI/CD workflow tests the tagged source, builds a signed release APK, and publishes it with generated release notes and a SHA-256 checksum.
@@ -35,7 +35,7 @@ Open **Actions → Android CI/CD → Run workflow**.
 Choose:
 
 - **build** to test and build a selected branch/ref and upload a short-lived debug APK artifact.
-- **release** to rebuild and publish an existing release tag. Supply the exact tag, such as `v0.2.0`.
+- **release** to rebuild and publish an existing release tag. Supply the exact tag, such as `v1.0.0`.
 
 Start manual releases from the `main` branch workflow. They use the same tag, main-branch ancestry, version, and signing checks as tag-push releases. They publish a GitHub Release for the selected existing tag; they do not create a new version tag.
 

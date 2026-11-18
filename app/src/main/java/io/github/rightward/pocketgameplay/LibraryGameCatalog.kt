@@ -45,11 +45,24 @@ object LibraryGameCatalog {
  * folder URI, or imported directory's display name.
  */
 object GameBrowserProfile {
-    fun forGameId(gameId: String): String {
+    fun forGameId(gameId: String, generation: Int = 0): String {
         require(gameId.isNotBlank()) { "A game ID is required." }
-        val token = UUID.nameUUIDFromBytes(
-            ("pocket-game-profile:" + gameId).toByteArray(Charsets.UTF_8)
-        )
+        require(generation >= 0) { "A profile generation cannot be negative." }
+        val identity = if (generation == 0) {
+            "pocket-game-profile:" + gameId
+        } else {
+            "pocket-game-profile:" + gameId + ":" + generation
+        }
+        val token = UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8))
         return "pocket-game-$token"
+    }
+
+    fun isValidProfileName(profileName: String): Boolean {
+        val prefix = "pocket-game-"
+        if (!profileName.startsWith(prefix)) return false
+        val token = profileName.removePrefix(prefix)
+        return runCatching {
+            UUID.fromString(token).toString() == token
+        }.getOrDefault(false)
     }
 }

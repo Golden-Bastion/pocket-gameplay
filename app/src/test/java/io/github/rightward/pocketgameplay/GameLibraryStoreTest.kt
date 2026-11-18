@@ -80,7 +80,7 @@ class GameLibraryStoreTest {
 
             val migratedProperties = Properties()
             metadata.inputStream().use { migratedProperties.load(it) }
-            assertEquals("3", migratedProperties.getProperty("version"))
+            assertEquals("4", migratedProperties.getProperty("version"))
         }
     }
 
@@ -222,6 +222,68 @@ class GameLibraryStoreTest {
             } catch (expected: java.io.IOException) {
                 assertTrue(store.all().isEmpty())
             }
+        }
+    }
+
+    @Test
+    fun rotatingBrowserProfilePersistsFreshIdentityAndPendingCleanup() {
+        withTemporaryDirectory { directory ->
+            val metadata = File(directory, "library.properties")
+            val store = GameLibraryStore(metadata)
+            val original = sampleImportedGame("reset-me")
+            store.add(original)
+
+            val reset = store.rotateBrowserProfile(original.id, original.browserProfile)
+
+            assertEquals(original.browserProfile, store.pendingBrowserProfileDeletions().single())
+            assertEquals(1, reset.browserProfileGeneration)
+            assertTrue(reset.browserProfile != original.browserProfile)
+            assertEquals(
+                GameBrowserProfile.forGameId(original.id, 1),
+                reset.browserProfile
+            )
+            assertEquals(reset, GameLibraryStore(metadata).all().single())
+
+            val secondReset = store.rotateBrowserProfile(reset.id, reset.browserProfile)
+            assertEquals(2, secondReset.browserProfileGeneration)
+            assertEquals(
+                setOf(original.browserProfile, reset.browserProfile),
+                store.pendingBrowserProfileDeletions().toSet()
+            )
+
+            store.completeBrowserProfileDeletion(original.browserProfile)
+            assertEquals(
+                listOf(reset.browserProfile),
+                store.pendingBrowserProfileDeletions()
+            )
+        }
+    }
+
+    @Test
+    fun readsVersionThreeNamedProfilesAsGenerationZero() {
+        withTemporaryDirectory { directory ->
+            val metadata = File(directory, "library.properties")
+            val game = sampleImportedGame("v3-profile")
+            val properties = Properties().apply {
+                setProperty("version", "3")
+                setProperty("count", "1")
+                setProperty("game.0.id", game.id)
+                setProperty("game.0.title", game.title)
+                setProperty("game.0.directory", game.directoryName)
+                setProperty("game.0.root", game.rootPath)
+                setProperty("game.0.entry", game.entryPoint)
+                setProperty("game.0.importedAt", game.importedAtEpochMillis.toString())
+                setProperty("game.0.storageType", game.storageType)
+                setProperty("game.0.sourceUri", game.sourceUri)
+                setProperty("game.0.originKey", game.originKey)
+                setProperty("game.0.browserProfile", game.browserProfile)
+            }
+            metadata.outputStream().use { properties.store(it, "Version three fixture") }
+
+            val loaded = GameLibraryStore(metadata).all().single()
+
+            assertEquals(0, loaded.browserProfileGeneration)
+            assertEquals(game.browserProfile, loaded.browserProfile)
         }
     }
 

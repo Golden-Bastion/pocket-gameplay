@@ -20,7 +20,9 @@ data class LibraryGame(
     /** Stable origin key retained when a folder permission is renewed with a new URI. */
     val originKey: String = "",
     /** Empty for records that still use the pre-isolation default WebView profile. */
-    val browserProfile: String = ""
+    val browserProfile: String = "",
+    /** Incremented whenever Clear data switches this game to a fresh named profile. */
+    val browserProfileGeneration: Int = 0
 )
 
 object LibraryStorageType {
@@ -87,6 +89,78 @@ class GameLibraryStore(private val metadataFile: File) {
         return true
     }
 
+    /**
+     * Switches a game to a fresh profile and records the old profile for safe deletion.
+     * Both changes are committed together so a failed reset cannot orphan the old save data.
+     */
+    @Synchronized
+    fun rotateBrowserProfile(id: String, expectedProfile: String): LibraryGame {
+        val games = readGames().toMutableList()
+        val index = games.indexOfFirst { it.id == id }
+        if (index < 0) throw IOException("The library entry no longer exists.")
+
+        val current = games[index]
+        if (current.browserProfile.isBlank() || current.browserProfile != expectedProfile) {
+            throw IOException("The game's browser profile changed. Reopen the library and try again.")
+        }
+        if (current.browserProfileGeneration == Int.MAX_VALUE) {
+            throw IOException("This game's profile reset limit has been reached.")
+        }
+
+        val nextGeneration = current.browserProfileGeneration + 1
+        val updated = current.copy(
+            browserProfile = GameBrowserProfile.forGameId(id, nextGeneration),
+            browserProfileGeneration = nextGeneration
+        )
+        val pending = (readPendingProfileDeletions() + expectedProfile).distinct()
+        games[index] = updated
+        writeGames(games, pending)
+        return updated
+    }
+
+    @Synchronized
+    fun queueBrowserProfileDeletion(profileName: String) {
+        if (!GameBrowserProfile.isValidProfileName(profileName)) {
+            throw IOException("Invalid browser profile name.")
+        }
+        val pending = readPendingProfileDeletions()
+        if (profileName !in pending) {
+            writeGames(readGames(), pending + profileName)
+        }
+    }
+
+    @Synchronized
+    fun pendingBrowserProfileDeletions(): List<String> = readPendingProfileDeletions()
+
+    @Synchronized
+    fun completeBrowserProfileDeletion(profileName: String) {
+        val pending = readPendingProfileDeletions()
+        val remaining = pending.filterNot { it == profileName }
+        if (remaining.size != pending.size) {
+            writeGames(readGames(), remaining)
+        }
+    }
+
+    private fun readPendingProfileDeletions(): List<String> {
+        if (!metadataFile.exists()) return emptyList()
+
+        val properties = Properties()
+        metadataFile.inputStream().buffered().use { input -> properties.load(input) }
+        val count = properties.getProperty(KEY_PENDING_PROFILE_COUNT)?.toIntOrNull() ?: 0
+        if (count !in 0..MAX_LIBRARY_ITEMS) {
+            throw IOException("Game library metadata contains an invalid pending-profile count.")
+        }
+
+        return (0 until count).map { index ->
+            val profileName = properties.getProperty(KEY_PENDING_PROFILE + index)
+                ?: throw IOException("Game library metadata is missing a pending profile.")
+            if (!GameBrowserProfile.isValidProfileName(profileName)) {
+                throw IOException("Game library metadata contains an invalid pending profile.")
+            }
+            profileName
+        }.distinct()
+    }
+
     private fun readGames(): List<LibraryGame> {
         if (!metadataFile.exists()) return emptyList()
 
@@ -120,7 +194,9 @@ class GameLibraryStore(private val metadataFile: File) {
                     ?: LibraryStorageType.IMPORTED,
                 sourceUri = properties.getProperty(prefix + "sourceUri", ""),
                 originKey = properties.getProperty(prefix + "originKey", ""),
-                browserProfile = properties.getProperty(prefix + "browserProfile", "")
+                browserProfile = properties.getProperty(prefix + "browserProfile", ""),
+                browserProfileGeneration = properties.getProperty(prefix + "browserProfileGeneration")
+                    ?.toIntOrNull() ?: 0
             ).also(::validate)
         }
     }
@@ -142,8 +218,13 @@ class GameLibraryStore(private val metadataFile: File) {
             throw IOException("Game library metadata contains an invalid origin key.")
         }
 
-        if (game.browserProfile.isNotEmpty() &&
-            game.browserProfile != GameBrowserProfile.forGameId(game.id)
+        if (game.browserProfileGeneration < 0 ||
+            (game.browserProfile.isEmpty() && game.browserProfileGeneration != 0) ||
+            (game.browserProfile.isNotEmpty() &&
+                game.browserProfile != GameBrowserProfile.forGameId(
+                    game.id,
+                    game.browserProfileGeneration
+                ))
         ) {
             throw IOException("Game library metadata contains an invalid browser profile.")
         }
@@ -172,9 +253,15 @@ class GameLibraryStore(private val metadataFile: File) {
         }
     }
 
-    private fun writeGames(games: List<LibraryGame>) {
+    private fun writeGames(
+        games: List<LibraryGame>,
+        pendingProfileDeletions: List<String> = readPendingProfileDeletions()
+    ) {
         if (games.size > MAX_LIBRARY_ITEMS) {
             throw IOException("The game library has reached its item limit.")
+        }
+        if (pendingProfileDeletions.size > MAX_LIBRARY_ITEMS) {
+            throw IOException("The pending browser-profile cleanup queue has reached its item limit.")
         }
 
         val parent = metadataFile.absoluteFile.parentFile
@@ -186,6 +273,13 @@ class GameLibraryStore(private val metadataFile: File) {
         val properties = Properties().apply {
             setProperty(KEY_VERSION, FORMAT_VERSION.toString())
             setProperty(KEY_COUNT, games.size.toString())
+            setProperty(KEY_PENDING_PROFILE_COUNT, pendingProfileDeletions.size.toString())
+            pendingProfileDeletions.forEachIndexed { index, profileName ->
+                if (!GameBrowserProfile.isValidProfileName(profileName)) {
+                    throw IOException("Invalid pending browser profile name.")
+                }
+                setProperty(KEY_PENDING_PROFILE + index, profileName)
+            }
             games.forEachIndexed { index, game ->
                 val prefix = "game.$index."
                 setProperty(prefix + "id", game.id)
@@ -198,6 +292,7 @@ class GameLibraryStore(private val metadataFile: File) {
                 setProperty(prefix + "sourceUri", game.sourceUri)
                 setProperty(prefix + "originKey", game.originKey)
                 setProperty(prefix + "browserProfile", game.browserProfile)
+                setProperty(prefix + "browserProfileGeneration", game.browserProfileGeneration.toString())
             }
         }
 
@@ -231,8 +326,10 @@ class GameLibraryStore(private val metadataFile: File) {
     companion object {
         private const val KEY_VERSION = "version"
         private const val KEY_COUNT = "count"
+        private const val KEY_PENDING_PROFILE_COUNT = "pendingProfileDeletion.count"
+        private const val KEY_PENDING_PROFILE = "pendingProfileDeletion."
         private const val MIN_SUPPORTED_VERSION = 1
-        private const val FORMAT_VERSION = 3
+        private const val FORMAT_VERSION = 4
         private const val MAX_LIBRARY_ITEMS = 10_000
     }
 }
