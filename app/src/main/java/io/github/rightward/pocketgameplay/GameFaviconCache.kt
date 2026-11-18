@@ -90,8 +90,9 @@ class GameFaviconCache(
     }
 
     private fun decodeSmallBitmap(bytes: ByteArray): Bitmap? {
+        val imageBytes = extractPngFromIco(bytes) ?: if (isIcoFile(bytes)) return null else bytes
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
             bounds.outWidth > MAX_SOURCE_DIMENSION || bounds.outHeight > MAX_SOURCE_DIMENSION
         ) {
@@ -104,9 +105,9 @@ class GameFaviconCache(
         }
 
         val decoded = BitmapFactory.decodeByteArray(
-            bytes,
+            imageBytes,
             0,
-            bytes.size,
+            imageBytes.size,
             BitmapFactory.Options().apply { inSampleSize = sampleSize }
         ) ?: return null
         val largestSide = maxOf(decoded.width, decoded.height)
@@ -118,6 +119,60 @@ class GameFaviconCache(
         return Bitmap.createScaledBitmap(decoded, width, height, true).also {
             if (it !== decoded) decoded.recycle()
         }
+    }
+
+    private fun isIcoFile(bytes: ByteArray): Boolean {
+        return bytes.size >= ICO_HEADER_SIZE &&
+            bytes[0].toInt() == 0 &&
+            bytes[1].toInt() == 0 &&
+            bytes[2].toInt() == 1 &&
+            bytes[3].toInt() == 0
+    }
+
+    /** Returns the largest PNG-backed frame in an ICO container, if one is present. */
+    private fun extractPngFromIco(bytes: ByteArray): ByteArray? {
+        if (!isIcoFile(bytes)) return null
+        val frameCount = littleEndianShort(bytes, 4)
+        if (frameCount <= 0 || frameCount > MAX_ICO_FRAMES ||
+            ICO_HEADER_SIZE + frameCount * ICO_ENTRY_SIZE > bytes.size
+        ) {
+            return null
+        }
+
+        var selected: ByteArray? = null
+        var selectedArea = -1
+        repeat(frameCount) { index ->
+            val entryOffset = ICO_HEADER_SIZE + index * ICO_ENTRY_SIZE
+            val width = (bytes[entryOffset].toInt() and 0xff).let { if (it == 0) 256 else it }
+            val height = (bytes[entryOffset + 1].toInt() and 0xff).let { if (it == 0) 256 else it }
+            val size = littleEndianInt(bytes, entryOffset + 8)
+            val imageOffset = littleEndianInt(bytes, entryOffset + 12)
+            if (size < PNG_SIGNATURE.size || imageOffset < 0 ||
+                size > MAX_ICON_BYTES || imageOffset > bytes.size - size
+            ) {
+                return@repeat
+            }
+
+            val isPng = PNG_SIGNATURE.indices.all { byteIndex ->
+                bytes[imageOffset + byteIndex] == PNG_SIGNATURE[byteIndex]
+            }
+            val area = width * height
+            if (isPng && area > selectedArea) {
+                selected = bytes.copyOfRange(imageOffset, imageOffset + size)
+                selectedArea = area
+            }
+        }
+        return selected
+    }
+
+    private fun littleEndianShort(bytes: ByteArray, offset: Int): Int {
+        return (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8)
+    }
+
+    private fun littleEndianInt(bytes: ByteArray, offset: Int): Int {
+        return littleEndianShort(bytes, offset) or
+            (littleEndianShort(bytes, offset + 2) shl 16)
     }
 
     private fun save(gameId: String, bitmap: Bitmap) {
@@ -158,6 +213,12 @@ class GameFaviconCache(
     }
 
     companion object {
+        private const val ICO_HEADER_SIZE = 6
+        private const val ICO_ENTRY_SIZE = 16
+        private const val MAX_ICO_FRAMES = 64
+        private val PNG_SIGNATURE = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
+        )
         private const val MAX_HTML_BYTES = 1024 * 1024
         private const val MAX_ICON_BYTES = 2 * 1024 * 1024
         private const val MAX_SOURCE_DIMENSION = 16_384
