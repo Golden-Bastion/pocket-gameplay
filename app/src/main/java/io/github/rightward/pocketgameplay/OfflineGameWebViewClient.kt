@@ -39,8 +39,11 @@ class OfflineGameWebViewClient(
                 assetLoader.shouldInterceptRequest(uri)
                     ?: GamePathHandler.errorResponse(404, "Not Found")
             path.startsWith(GAME_PATH_PREFIX) ->
-                assetLoader.shouldInterceptRequest(uri)
-                    ?: GamePathHandler.errorResponse(404, "Not Found")
+                gamePathHandler.handle(
+                    path = path.removePrefix(GAME_PATH_PREFIX),
+                    rangeHeader = rangeHeader,
+                    method = request.method
+                )
             else -> gamePathHandler.handle(
                 path = path.removePrefix("/"),
                 rangeHeader = rangeHeader,
