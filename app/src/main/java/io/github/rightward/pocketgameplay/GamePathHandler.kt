@@ -138,8 +138,9 @@ class GamePathHandler(
 
         return when {
             descriptorLength != null && descriptorLength >= 0 -> descriptorLength
-            documentLength == 0L && descriptorLength == null -> -1L
-            else -> documentLength
+            descriptorLength != null -> -1L
+            documentLength >= 0 -> documentLength
+            else -> -1L
         }
     }
 
