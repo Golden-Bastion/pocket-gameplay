@@ -121,6 +121,9 @@ class ZipGameImporter(
 
                 if (entry.isDirectory) {
                     ensureDirectory(target)
+                    if (entry.size > 0 || zip.read() >= 0) {
+                        throw ZipImportException("A directory entry unexpectedly contains file data.")
+                    }
                 } else {
                     if (entry.size > limits.maxEntryBytes) {
                         throw ZipImportException("An archive file exceeds the per-file size limit.")

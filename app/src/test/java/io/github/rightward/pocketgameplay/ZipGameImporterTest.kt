@@ -76,6 +76,38 @@ class ZipGameImporterTest {
     }
 
     @Test
+    fun enforcesEntryCountLimit() {
+        withTemporaryDirectory { directory ->
+            val importer = ZipGameImporter(
+                File(directory, "games"),
+                ZipImportLimits(maxEntries = 1)
+            )
+
+            try {
+                importer.extract(zipOf("one.txt" to "one", "two.txt" to "two"), "Many.zip")
+                throw AssertionError("Expected entry count rejection.")
+            } catch (expected: ZipImportException) {
+                assertTrue(File(directory, "games").listFiles().isNullOrEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun rejectsDirectoryEntriesContainingData() {
+        withTemporaryDirectory { directory ->
+            val importer = ZipGameImporter(File(directory, "games"))
+            val archive = zipOf("assets/" to "unexpected")
+
+            try {
+                importer.extract(archive, "Invalid.zip")
+                throw AssertionError("Expected non-empty directory rejection.")
+            } catch (expected: ZipImportException) {
+                assertTrue(File(directory, "games").listFiles().isNullOrEmpty())
+            }
+        }
+    }
+
+    @Test
     fun rejectsDuplicateEntries() {
         withTemporaryDirectory { directory ->
             val importer = ZipGameImporter(File(directory, "games"))
