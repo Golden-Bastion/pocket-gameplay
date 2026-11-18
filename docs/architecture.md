@@ -1,0 +1,39 @@
+# Architecture
+
+## Runtime
+
+Pocket Gameplay is a native Kotlin Android application. Games execute in the Android System WebView; the app is a local game launcher, not an independent browser engine.
+
+## Folder access
+
+The user selects a game directory through the Storage Access Framework. The app requests and persists read-only access to that tree. It does not request broad storage permissions and does not copy or reorganize a selected game's files.
+
+## Entry-point discovery
+
+The app searches the selected tree for `.html` and `.htm` files. Likely root entry points are sorted toward the top of the chooser, but filenames are not assumed: the user can select a game page named after the game or any other discovered HTML file.
+
+Scanning is bounded by a maximum depth and number of visited entries so unusually large directory trees cannot cause unbounded work.
+
+## Local resource serving
+
+A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. Relative references retain their normal web behavior:
+
+```html
+<script src="js/game.js"></script>
+<img src="assets/player.png">
+```
+
+The selected entry point is loaded from `https://appassets.androidplatform.net/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
+
+Missing or invalid local paths return a 404 response rather than falling through to the network.
+
+## WebView security
+
+- JavaScript and DOM storage are enabled because ordinary HTML5 games require them.
+- Direct `file://` and `content://` access is disabled.
+- File-URL cross-origin access is disabled.
+- Mixed content is blocked.
+- The app does not declare the Android INTERNET permission.
+- No JavaScript bridge exposes native app APIs to game code.
+
+Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
