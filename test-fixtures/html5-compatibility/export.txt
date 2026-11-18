@@ -1,0 +1,2 @@
+Pocket Gameplay local download fixture.
+This file should be saved through Android's system document picker.
