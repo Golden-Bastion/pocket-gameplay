@@ -1349,7 +1349,7 @@ class MainActivity : Activity() {
         } catch (_: IOException) {
             return
         }
-        pending.forEach(::deleteQueuedBrowserProfile)
+        pending.forEach { profileName -> deleteQueuedBrowserProfile(profileName) }
     }
 
     private fun deleteQueuedBrowserProfile(profileName: String): Boolean {
