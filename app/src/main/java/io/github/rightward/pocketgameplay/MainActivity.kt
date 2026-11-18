@@ -32,7 +32,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
+import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -54,6 +57,7 @@ class MainActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
+    private var currentWebViewProfile: String? = null
     private var developerConsoleButton: Button? = null
     private var playerControlsButton: Button? = null
     private var playerControlsPanel: LinearLayout? = null
@@ -380,10 +384,14 @@ class MainActivity : Activity() {
                 entryPoint = entryPoint.relativePath,
                 importedAtEpochMillis = System.currentTimeMillis(),
                 storageType = LibraryStorageType.FOLDER,
-                sourceUri = uriValue
+                sourceUri = uriValue,
+                originKey = originKey,
+                browserProfile = GameBrowserProfile.forGameId(
+                    FolderGameId.create(uriValue, entryPoint.relativePath)
+                )
             )
             libraryStore.add(game)
-            openGame(root, entryPoint, originKey)
+            openGame(root, entryPoint, game)
         } catch (exception: Exception) {
             releaseFolderGrantIfUnused(treeUri)
             showHome("Could not save this folder game: " + (exception.message ?: "Unknown error."))
@@ -470,12 +478,14 @@ class MainActivity : Activity() {
                 directoryName = staged.id,
                 rootPath = staged.rootPath,
                 entryPoint = entryPoint.relativePath,
-                importedAtEpochMillis = System.currentTimeMillis()
+                importedAtEpochMillis = System.currentTimeMillis(),
+                originKey = staged.id,
+                browserProfile = GameBrowserProfile.forGameId(staged.id)
             )
             libraryStore.add(game)
 
             val root = resolveGameRoot(game)
-            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game)
         } catch (exception: Exception) {
             runCatching { libraryStore.remove(staged.id) }
             publishedDirectory?.deleteRecursively()
@@ -489,7 +499,7 @@ class MainActivity : Activity() {
             when (game.storageType) {
                 LibraryStorageType.IMPORTED -> {
                     val root = resolveGameRoot(game)
-                    openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
+                    openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game)
                 }
                 LibraryStorageType.FOLDER -> {
                     val treeUri = Uri.parse(game.sourceUri)
@@ -503,7 +513,7 @@ class MainActivity : Activity() {
                     val root = DocumentFile.fromTreeUri(this, treeUri)
                         ?: throw IOException("The selected folder is no longer available.")
                     validateFolderEntryPoint(root, game.entryPoint)
-                    openGame(root, HtmlEntryPoint(game.entryPoint), GameOrigin.forFolderUri(game.sourceUri))
+                    openGame(root, HtmlEntryPoint(game.entryPoint), game)
                 }
                 else -> throw IOException("This library item has an unsupported storage type.")
             }
@@ -570,6 +580,116 @@ class MainActivity : Activity() {
         return root
     }
 
+    private fun supportsPerGameProfiles(): Boolean {
+        return WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+    }
+
+    private fun isolateGameSaves(game: LibraryGame) {
+        if (!supportsPerGameProfiles()) {
+            AlertDialog.Builder(this)
+                .setTitle("Per-game saves are unavailable")
+                .setMessage(
+                    "Update Android System WebView to a version that supports isolated profiles. " +
+                        "This device currently cannot safely separate or clear one game's browser data."
+                )
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        if (game.browserProfile.isNotBlank()) {
+            confirmClearGameData(game)
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Isolate saves for " + game.title + "?")
+            .setMessage(
+                "This game still uses the older shared WebView profile. Pocket Gameplay will " +
+                    "switch it to a new private profile. Existing saves in the shared profile " +
+                    "will not be copied or deleted, and this game will start with fresh data."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Isolate saves") { _, _ ->
+                val retainedOrigin = game.originKey.ifBlank {
+                    if (game.storageType == LibraryStorageType.FOLDER) {
+                        GameOrigin.forFolderUri(game.sourceUri)
+                    } else {
+                        game.id
+                    }
+                }
+                try {
+                    val updated = game.copy(
+                        originKey = retainedOrigin,
+                        browserProfile = GameBrowserProfile.forGameId(game.id)
+                    )
+                    if (!libraryStore.update(updated)) {
+                        throw IOException("The library entry no longer exists.")
+                    }
+                    showHome("This game now has an isolated save profile. Its old shared saves were left untouched.")
+                } catch (exception: IOException) {
+                    showHome("Could not isolate this game's saves: " + (exception.message ?: "Unknown error."))
+                }
+            }
+            .show()
+    }
+
+    private fun confirmClearGameData(game: LibraryGame) {
+        if (game.browserProfile.isBlank()) {
+            isolateGameSaves(game)
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Clear data for " + game.title + "?")
+            .setMessage(
+                "This permanently clears this game's local saves, site storage, cookies, " +
+                    "cache, IndexedDB and service workers. Other games' profiles are not affected."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear data") { _, _ ->
+                clearGameData(game)
+            }
+            .show()
+    }
+
+    private fun clearGameData(game: LibraryGame) {
+        if (!supportsPerGameProfiles()) {
+            showHome("Per-game data clearing is not supported by this System WebView.")
+            return
+        }
+
+        try {
+            if (currentWebViewProfile == game.browserProfile) destroyWebView()
+            ProfileStore.getInstance().deleteProfile(game.browserProfile)
+            showHome("A data reset was requested. The game's profile will be recreated the next time it is played.")
+        } catch (exception: Exception) {
+            showHome("Could not clear this game's data: " + (exception.message ?: "Unknown error."))
+        }
+    }
+
+    /** Deletes only a named profile. Legacy games share the default profile, which is never deleted. */
+    private fun deleteBrowserProfile(game: LibraryGame) {
+        if (game.browserProfile.isBlank() || !supportsPerGameProfiles()) return
+        if (currentWebViewProfile == game.browserProfile) destroyWebView()
+
+        try {
+            ProfileStore.getInstance().deleteProfile(game.browserProfile)
+        } catch (exception: Exception) {
+            throw IOException("Could not delete this game's browser data.", exception)
+        }
+    }
+
+    private fun destroyWebView() {
+        webView?.let { view ->
+            view.stopLoading()
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.destroy()
+        }
+        webView = null
+        currentWebViewProfile = null
+    }
+
     private fun confirmRemoveGame(game: LibraryGame) {
         AlertDialog.Builder(this)
             .setTitle("Remove " + game.title + "?")
@@ -587,6 +707,7 @@ class MainActivity : Activity() {
 
     private fun removeLibraryGame(game: LibraryGame) {
         try {
+            deleteBrowserProfile(game)
             when (game.storageType) {
                 LibraryStorageType.FOLDER -> removeFolderShortcut(game)
                 LibraryStorageType.IMPORTED -> removeImportedGame(game)
@@ -669,11 +790,15 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, originKey: String) {
+    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, game: LibraryGame) {
         cancelPendingFileChooser()
         webView?.stopLoading()
         pathHandler.setGameRoot(root)
 
+        val originKey = game.originKey.takeIf { it.isNotBlank() } ?: when (game.storageType) {
+            LibraryStorageType.FOLDER -> GameOrigin.forFolderUri(game.sourceUri)
+            else -> game.id
+        }
         val assetHost = GameOrigin.domainFor(originKey)
         currentGameAssetHost = assetHost
         val assetLoader = WebViewAssetLoader.Builder()
@@ -683,7 +808,7 @@ class MainActivity : Activity() {
                 WebViewAssetLoader.AssetsPathHandler(this)
             )
             .build()
-        showPlayer(assetLoader, assetHost)
+        showPlayer(assetLoader, assetHost, game.browserProfile)
 
         val encodedPath = entryPoint.relativePath
             .split('/')
@@ -692,11 +817,26 @@ class MainActivity : Activity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showPlayer(assetLoader: WebViewAssetLoader, assetHost: String) {
+    private fun showPlayer(
+        assetLoader: WebViewAssetLoader,
+        assetHost: String,
+        profileName: String
+    ) {
         isPlaying = true
         content.removeAllViews()
 
+        val selectedProfile = profileName.takeIf {
+            it.isNotBlank() && supportsPerGameProfiles()
+        }
+        if (webView != null && currentWebViewProfile != selectedProfile) {
+            destroyWebView()
+        }
+
         val player = webView ?: WebView(this).also { view ->
+            if (selectedProfile != null) {
+                WebViewCompat.setProfile(view, selectedProfile)
+            }
+            currentWebViewProfile = selectedProfile
             view.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -766,6 +906,7 @@ class MainActivity : Activity() {
                         crashed.destroy()
                     }
                     webView = null
+                    currentWebViewProfile = null
                     showHome("The game renderer stopped unexpectedly.")
                 }
             }
@@ -857,12 +998,7 @@ class MainActivity : Activity() {
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
-        webView?.apply {
-            stopLoading()
-            (parent as? ViewGroup)?.removeView(this)
-            destroy()
-        }
-        webView = null
+        destroyWebView()
         developerConsoleButton = null
         playerControlsButton = null
         playerControlsPanel = null
