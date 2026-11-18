@@ -1,6 +1,5 @@
 package io.github.rightward.pocketgameplay
 
-import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -13,26 +12,23 @@ class LocalGameDownloadPathTest {
         assertEquals(
             "audio/theme.mp3",
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://$host/game/audio/theme.mp3"),
-                host
+                "https", host, -1, "/game/audio/theme.mp3", host
             )
         )
         assertEquals(
             "exports/save.json",
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://$host/exports/save.json"),
-                host
+                "https", host, 443, "/exports/save.json", host
             )
         )
     }
 
     @Test
-    fun decodesUrlPathOnce() {
+    fun acceptsAndroidUriDecodedPathWithoutDecodingTwice() {
         assertEquals(
             "assets/my%20sprite.png",
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://$host/assets/my%2520sprite.png"),
-                host
+                "https", host, -1, "/assets/my%20sprite.png", host
             )
         )
     }
@@ -41,14 +37,12 @@ class LocalGameDownloadPathTest {
     fun refusesExternalOrAppOwnedPaths() {
         assertNull(
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://example.com/assets/game.zip"),
-                host
+                "https", "example.com", -1, "/assets/game.zip", host
             )
         )
         assertNull(
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://$host/__pocket/eruda.js"),
-                host
+                "https", host, -1, "/__pocket/eruda.js", host
             )
         )
     }
@@ -57,9 +51,14 @@ class LocalGameDownloadPathTest {
     fun refusesTraversalPaths() {
         assertNull(
             LocalGameDownloadPath.resolve(
-                Uri.parse("https://$host/assets/%2e%2e/private.zip"),
-                host
+                "https", host, -1, "/assets/../private.zip", host
             )
         )
+    }
+
+    @Test
+    fun refusesNonHttpsAndNonstandardPorts() {
+        assertNull(LocalGameDownloadPath.resolve("http", host, -1, "/data.zip", host))
+        assertNull(LocalGameDownloadPath.resolve("https", host, 8080, "/data.zip", host))
     }
 }
