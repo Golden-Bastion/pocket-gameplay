@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.database.Cursor
 import android.graphics.Color
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -1462,7 +1463,40 @@ class MainActivity : Activity() {
             )
         )
 
+        configureGameSwipeGestureHandling(player)
         createPlayerControls(player)
+    }
+
+    /**
+     * Lets games receive precise horizontal edge swipes without disabling system Back
+     * across the whole screen. Android accepts at most 200dp of vertical exclusion per edge.
+     */
+    private fun configureGameSwipeGestureHandling(player: WebView) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+
+        fun updateExclusionRects() {
+            val width = player.width
+            val height = player.height
+            if (width <= 0 || height <= dp(64)) {
+                player.systemGestureExclusionRects = emptyList()
+                return
+            }
+
+            val edgeWidth = minOf(dp(24), width / 2)
+            val exclusionHeight = minOf(dp(200), height - dp(64))
+            val top = (height - exclusionHeight) / 2
+            val bottom = top + exclusionHeight
+
+            player.systemGestureExclusionRects = listOf(
+                Rect(0, top, edgeWidth, bottom),
+                Rect(width - edgeWidth, top, width, bottom)
+            )
+        }
+
+        player.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateExclusionRects()
+        }
+        player.post { updateExclusionRects() }
     }
 
     private fun handleBackNavigation() {

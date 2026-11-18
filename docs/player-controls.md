@@ -12,6 +12,10 @@ The active game is shown edge-to-edge in a native `WebView`. A small **Controls*
 
 The panel is hidden by default, so the game retains the available screen area during normal play. The developer-console control remains inside the panel.
 
+## Game touch gestures
+
+The WebView receives game touch input directly. On Android 10 and newer, Pocket Gameplay requests narrow, centered gesture-exclusion regions along both horizontal screen edges so HTML5 games can recognize edge-originating swipes, such as SugarCube's sidebar gestures. The exclusion is limited to at most 200 dp vertically per edge; Android Back remains available along the rest of each side edge. Older Android versions do not need this system-gesture exclusion.
+
 ## HTML fullscreen and media
 
 The player WebView's `WebChromeClient` handles the HTML fullscreen custom-view lifecycle:
