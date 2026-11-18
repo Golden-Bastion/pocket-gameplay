@@ -23,6 +23,18 @@ val downloadEruda by tasks.registering {
         val archive = erudaArchive.get().asFile
         archive.parentFile.mkdirs()
 
+        // A restored GitHub Actions cache can contain the verified package archive,
+        // even though the fresh runner has no Gradle task history for this workspace.
+        if (archive.isFile) {
+            val cachedIntegrity = MessageDigest.getInstance("SHA-512")
+                .digest(archive.readBytes())
+                .let { Base64.getEncoder().encodeToString(it) }
+            if (cachedIntegrity == erudaPackageIntegrity) {
+                logger.lifecycle("Using cached Eruda $erudaVersion package archive.")
+                return@doLast
+            }
+        }
+
         val temporary = File(archive.parentFile, archive.name + ".part")
         try {
             val connection = URL(
