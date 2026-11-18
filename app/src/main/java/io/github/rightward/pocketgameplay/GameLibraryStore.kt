@@ -260,6 +260,9 @@ class GameLibraryStore(private val metadataFile: File) {
         if (games.size > MAX_LIBRARY_ITEMS) {
             throw IOException("The game library has reached its item limit.")
         }
+        if (pendingProfileDeletions.size > MAX_LIBRARY_ITEMS) {
+            throw IOException("The pending browser-profile cleanup queue has reached its item limit.")
+        }
 
         val parent = metadataFile.absoluteFile.parentFile
             ?: throw IOException("The game library metadata path has no parent directory.")
