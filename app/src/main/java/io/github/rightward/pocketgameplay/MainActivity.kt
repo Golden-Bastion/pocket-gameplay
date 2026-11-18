@@ -266,7 +266,7 @@ class MainActivity : Activity() {
             })
         }
 
-        renderGames = {
+        renderGames = render@{
             results.removeAllViews()
             val filtered = LibraryGameCatalog.filterAndSort(
                 games,
@@ -280,7 +280,7 @@ class MainActivity : Activity() {
                     textSize = 14f
                     setPadding(0, dp(12), 0, dp(12))
                 }, matchWidthWrapContent())
-                return
+                return@render
             }
 
             filtered.forEach { game ->
@@ -403,7 +403,7 @@ class MainActivity : Activity() {
         val titleField = EditText(this).apply {
             setText(game.title)
             setSelection(text.length)
-            singleLine = true
+            setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT
         }
         AlertDialog.Builder(this)
