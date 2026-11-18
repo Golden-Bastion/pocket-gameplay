@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.database.Cursor
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,7 @@ import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -59,6 +61,20 @@ class MainActivity : Activity() {
 
         content = FrameLayout(this)
         setContentView(content)
+        content.setOnApplyWindowInsetsListener { _, insets ->
+            val safeInsets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+                )
+            } else {
+                null
+            }
+            val leftInset = safeInsets?.left ?: insets.systemWindowInsetLeft
+            val topInset = safeInsets?.top ?: insets.systemWindowInsetTop
+            val rightInset = safeInsets?.right ?: insets.systemWindowInsetRight
+            updatePlayerControlInsets(leftInset, topInset, rightInset)
+            insets
+        }
 
         worker = Executors.newSingleThreadExecutor()
         gamesDirectory = File(filesDir, "games")
@@ -756,6 +772,7 @@ class MainActivity : Activity() {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = immersiveSystemUiFlags()
         }
+        content.requestApplyInsets()
     }
 
     override fun onDestroy() {
@@ -845,6 +862,29 @@ class MainActivity : Activity() {
                 marginStart = dp(12)
             }
         )
+        content.requestApplyInsets()
+    }
+
+    private fun updatePlayerControlInsets(leftInset: Int, topInset: Int, rightInset: Int) {
+        val startInset = if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            rightInset
+        } else {
+            leftInset
+        }
+        playerControlsButton?.let { button ->
+            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.topMargin = dp(12) + topInset
+                params.marginStart = dp(12) + startInset
+                button.layoutParams = params
+            }
+        }
+        playerControlsPanel?.let { panel ->
+            (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.topMargin = dp(64) + topInset
+                params.marginStart = dp(12) + startInset
+                panel.layoutParams = params
+            }
+        }
     }
 
     private fun setPlayerControlsExpanded(expanded: Boolean) {
