@@ -1,10 +1,30 @@
-name: Android CI
+name: Android CI/CD
 
 on:
   push:
     branches: ["main"]
+    tags:
+      - "v*.*.*"
   pull_request:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation to perform
+        required: true
+        default: build
+        type: choice
+        options:
+          - build
+          - release
+      branch:
+        description: Branch or ref to build (build operation only)
+        required: true
+        default: main
+        type: string
+      release_tag:
+        description: Existing release tag to rebuild and publish (release operation only)
+        required: false
+        type: string
   schedule:
     # Refresh the shared default-branch caches weekly.
     - cron: "23 4 * * 1"
@@ -13,16 +33,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ci-${{ github.ref }}
+  group: android-ci-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'ci' }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build, test and warm Gradle cache
+    name: Test and build Android APK
     runs-on: ubuntu-latest
+    env:
+      RELEASE_REQUESTED: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.operation == 'release') }}
+    outputs:
+      release_tag: ${{ steps.release-meta.outputs.tag }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'build' && inputs.branch || github.event_name == 'workflow_dispatch' && inputs.operation == 'release' && inputs.release_tag || github.ref }}
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -30,17 +57,17 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # The Gradle action owns Gradle User Home caching. PRs restore the main
-      # cache read-only; only trusted main-branch runs publish refreshed state.
+      # PRs and non-main refs restore the main cache read-only. Trusted main
+      # builds refresh it after merges.
       - name: Set up Gradle and restore shared cache
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.13"
           cache-provider: enhanced
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'build' && inputs.branch != 'main') }}
 
-      # Eruda's verified npm tarball lives in the project build directory,
-      # outside Gradle User Home, so cache it separately.
+      # Eruda's verified npm tarball lives in app/build/downloads, outside
+      # Gradle User Home, so restore it separately.
       - name: Restore Eruda package archive
         id: eruda-cache
         uses: actions/cache/restore@v6
@@ -56,11 +83,133 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Validate release tag and Android version
+        id: release-meta
+        if: env.RELEASE_REQUESTED == 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$WORKFLOW_REF" != "refs/heads/main" ]]; then
+            echo "::error::Run manual releases from the main branch workflow."
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -z "$INPUT_RELEASE_TAG" ]]; then
+            echo "::error::release_tag is required for the release operation."
+            exit 1
+          fi
+
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tags must use vMAJOR.MINOR.PATCH; got $RELEASE_TAG"
+            exit 1
+          fi
+
+          if ! git show-ref --tags --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "::error::Release tag $RELEASE_TAG does not exist in this repository."
+            exit 1
+          fi
+
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG^{commit}")"
+          if ! git branch -r --contains "$tag_commit" | grep -qE 'origin/main$'; then
+            echo "::error::Release tag $RELEASE_TAG does not point to a commit contained in main."
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+
+          if (( ${#major} > 4 || ${#minor} > 3 || ${#patch} > 3 )); then
+            echo "::error::Release tag components exceed the supported Android version-code range."
+            exit 1
+          fi
+
+          tag_version="${RELEASE_TAG#v}"
+          package_version="$(sed -n 's/^appVersionName=//p' gradle.properties | head -n 1)"
+          if [[ -z "$package_version" || "$package_version" != "$tag_version" ]]; then
+            echo "::error::gradle.properties appVersionName ($package_version) does not match tag ($tag_version)."
+            exit 1
+          fi
+
+          # Keep versionCode monotonic and unique for normal MAJOR.MINOR.PATCH
+          # versions by reserving three decimal digits each for MINOR and PATCH.
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          if (( version_code < 1 || version_code > 2100000000 )); then
+            echo "::error::The tag produces an invalid Android versionCode: $version_code"
+            exit 1
+          fi
+
+          package_version_code="$(sed -n 's/^appVersionCode=//p' gradle.properties | head -n 1)"
+          if [[ -z "$package_version_code" || "$package_version_code" != "$version_code" ]]; then
+            echo "::error::gradle.properties appVersionCode ($package_version_code) does not match the version code calculated from $RELEASE_TAG ($version_code)."
+            exit 1
+          fi
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version_name=$tag_version" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "Validated $RELEASE_TAG (versionCode $version_code)"
+
+      - name: Verify Android release signing secrets
+        if: env.RELEASE_REQUESTED == 'true'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub Actions secret: $name. See docs/releasing.md."
+              exit 1
+            fi
+          done
+
+      - name: Prepare persistent Android signing key
+        if: env.RELEASE_REQUESTED == 'true'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/pocket-gameplay-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          if [[ ! -s "$keystore" ]]; then
+            echo "::error::The decoded Android release keystore is empty or invalid."
+            exit 1
+          fi
+
       - name: Run unit tests and assemble debug APK
+        if: env.RELEASE_REQUESTED != 'true'
         run: gradle testDebugUnitTest assembleDebug
 
-      # Cache entries are immutable. The hash gives changed Eruda pins a new
-      # key; this step only writes from main, never from pull-request contexts.
+      - name: Run unit tests and assemble signed release APK
+        if: env.RELEASE_REQUESTED == 'true'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/pocket-gameplay-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_VERSION_NAME: ${{ steps.release-meta.outputs.version_name }}
+          RELEASE_VERSION_CODE: ${{ steps.release-meta.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          gradle testDebugUnitTest assembleRelease \
+            -PappVersionName="$RELEASE_VERSION_NAME" \
+            -PappVersionCode="$RELEASE_VERSION_CODE"
+
+          cd app/build/outputs/apk/release
+          sha256sum app-release.apk > app-release.apk.sha256
+
+      # The cache is immutable. Only main-branch runs write refreshed package
+      # archives; PRs and tag builds restore the trusted main cache read-only.
       - name: Save Eruda package archive
         if: github.ref == 'refs/heads/main' && steps.eruda-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -69,10 +218,52 @@ jobs:
           key: eruda-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts') }}
 
       - name: Upload debug APK
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' && env.RELEASE_REQUESTED != 'true'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: pocket-gameplay-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 2
+
+      - name: Upload signed release APK
+        if: env.RELEASE_REQUESTED == 'true'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pocket-gameplay-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          archive: false
+          overwrite: true
+
+  release:
+    name: Publish GitHub Release
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.operation == 'release')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed release APK
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: pocket-gameplay-release
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ needs.build.outputs.release_tag }}
+          generate_release_notes: true
+          preserve_order: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/app-release.apk
+            dist/app-release.apk.sha256

@@ -44,6 +44,8 @@ Then use `./gradlew` for subsequent builds. The first build on a clean workspace
 
 GitHub Actions restores a shared Gradle cache for pull requests. Trusted builds on `main` refresh that cache after merges, and a scheduled/manual warm-up keeps it populated. The Eruda package archive is cached separately. See [CI caching](docs/ci-caching.md) for the cache scopes and security model.
 
+See [Android releases](docs/releasing.md) for version tags, manual build/release dispatch, signing-key setup, and GitHub Release assets.
+
 See [the developer console guide](docs/developer-console.md) for its behavior and security boundaries.
 
 See [playback controls and fullscreen](docs/player-controls.md) for the control surface, Back priority, fullscreen lifecycle, and rotation behavior.
