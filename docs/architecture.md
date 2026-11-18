@@ -40,6 +40,14 @@ Missing or invalid local paths return a 404 response rather than falling through
 
 Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
 
+## Developer console
+
+An optional native **Dev** control injects the pinned Eruda bundle into the active game only when requested. The bundle is built into the APK and served through a reserved `/__pocket/` path on the current per-game origin. The route is handled by `WebViewAssetLoader.AssetsPathHandler`, not by the user-selected game folder.
+
+The game origin remains isolated from other games. Eruda's own floating entry button is hidden; the native player button controls its visibility. Injection is lazy and idempotent within a page. The developer console uses the game's JavaScript realm and is not a security boundary: game code can inspect or interfere with the injected tool.
+
+The build downloads the exact Eruda 3.4.3 npm archive and checks its SHA-512 integrity before extracting the browser bundle and including its MIT notice. Runtime debugging is offline and does not add the Android INTERNET permission.
+
 ## Library records
 
 The library can contain two storage types. Imported games point to an app-private extracted directory. Folder-backed games store a persisted Storage Access Framework tree URI and a relative HTML entry point; they never own or delete the original directory. The versioned metadata reader continues to interpret version-1 entries as imported games while version 2 adds storage type and source URI fields.
