@@ -16,7 +16,7 @@ Scanning is bounded by a maximum depth and number of visited entries so unusuall
 
 ## Local resource serving
 
-A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. Relative references retain their normal web behavior:
+The request-aware local game route resolves URL path segments beneath the selected directory and opens the corresponding document through `ContentResolver`. It runs from `WebViewClient.shouldInterceptRequest` so it can preserve the request method and `Range` header for local file responses. Relative references retain their normal web behavior:
 
 ```html
 <script src="js/game.js"></script>
@@ -25,7 +25,7 @@ A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments be
 
 Each game is loaded from a distinct HTTPS-style host generated beneath the reserved `appassets.androidplatform.net` domain, with `WebViewAssetLoader.Builder.setDomain`. The origin key is stable for an imported game and deterministically derived from a selected folder's Storage Access Framework URI. This keeps browser-managed origin storage isolated between games.
 
-The selected entry point is loaded from `https://<game-origin>/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
+The selected entry point is loaded from `https://<game-origin>/game/<entry-point>`. The reserved `/game/` route and root-relative URLs such as `/assets/player.png` are resolved by the same local file handler, which preserves Range and GET/HEAD request semantics. The reserved `/__pocket/` route is handled separately by `WebViewAssetLoader` for app-owned developer assets.
 
 Missing or invalid local paths return a 404 response rather than falling through to the network.
 
