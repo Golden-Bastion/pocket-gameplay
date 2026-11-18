@@ -16,6 +16,7 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Local resource loading with `WebViewAssetLoader`; no `file://` URLs.
 - Separate local web origins for each game, isolating browser-managed storage such as `localStorage` and IndexedDB.
 - ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
+- Optional in-game developer console powered by locally bundled Eruda 3.4.3.
 
 ## Build
 
@@ -31,7 +32,9 @@ To create a Gradle Wrapper for local development on a machine with Gradle instal
 gradle wrapper --gradle-version 8.13
 ```
 
-Then use `./gradlew` for subsequent builds.
+Then use `./gradlew` for subsequent builds. The first build on a clean workspace also downloads the pinned Eruda package from npm and verifies its SHA-512 integrity before packaging the script and MIT notice into the APK. No network access is needed to use the developer console at runtime.
+
+See [the developer console guide](docs/developer-console.md) for its behavior and security boundaries.
 
 ## Compatibility
 
