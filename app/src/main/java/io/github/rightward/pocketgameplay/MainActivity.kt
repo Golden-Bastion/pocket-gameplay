@@ -31,7 +31,6 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private lateinit var content: FrameLayout
     private lateinit var pathHandler: GamePathHandler
-    private lateinit var assetLoader: WebViewAssetLoader
     private lateinit var worker: ExecutorService
     private lateinit var gamesDirectory: File
     private lateinit var zipImporter: ZipGameImporter
@@ -55,10 +54,6 @@ class MainActivity : Activity() {
         cleanInterruptedImports()
 
         pathHandler = GamePathHandler(contentResolver)
-        assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/game/", pathHandler)
-            .build()
-
         showHome()
     }
 
@@ -260,6 +255,7 @@ class MainActivity : Activity() {
 
     private fun scanGameFolder(treeUri: Uri) {
         val generation = ++scanGeneration
+        val originKey = GameOrigin.forFolderUri(treeUri.toString())
         showHome("Scanning for HTML and HTM files…")
 
         worker.execute {
@@ -274,15 +270,15 @@ class MainActivity : Activity() {
                 } else if (entries.isEmpty()) {
                     showHome("No .html or .htm files were found in that folder.")
                 } else {
-                    chooseFolderEntryPoint(root, entries)
+                    chooseFolderEntryPoint(root, entries, originKey)
                 }
             }
         }
     }
 
-    private fun chooseFolderEntryPoint(root: DocumentFile, entries: List<HtmlEntryPoint>) {
+    private fun chooseFolderEntryPoint(root: DocumentFile, entries: List<HtmlEntryPoint>, originKey: String) {
         if (entries.size == 1) {
-            openGame(root, entries.first())
+            openGame(root, entries.first(), originKey)
             return
         }
 
@@ -290,7 +286,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Choose the game's start page")
             .setItems(labels) { _, selected ->
-                openGame(root, entries[selected])
+                openGame(root, entries[selected], originKey)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -381,7 +377,7 @@ class MainActivity : Activity() {
             libraryStore.add(game)
 
             val root = resolveGameRoot(game)
-            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint))
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
         } catch (exception: Exception) {
             runCatching { libraryStore.remove(staged.id) }
             publishedDirectory?.deleteRecursively()
@@ -393,7 +389,7 @@ class MainActivity : Activity() {
     private fun playLibraryGame(game: LibraryGame) {
         try {
             val root = resolveGameRoot(game)
-            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint))
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
         } catch (_: IOException) {
             showHome("This imported game is missing or its saved paths are invalid. Remove it and import it again.")
         }
@@ -490,19 +486,25 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint) {
+    private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, originKey: String) {
         webView?.stopLoading()
         pathHandler.setGameRoot(root)
-        showPlayer()
+
+        val assetHost = GameOrigin.domainFor(originKey)
+        val assetLoader = WebViewAssetLoader.Builder()
+            .setDomain(assetHost)
+            .addPathHandler("/game/", pathHandler)
+            .build()
+        showPlayer(assetLoader, assetHost)
 
         val encodedPath = entryPoint.relativePath
             .split('/')
             .joinToString("/") { Uri.encode(it) }
-        webView?.loadUrl(OfflineGameWebViewClient.GAME_BASE_URL + encodedPath)
+        webView?.loadUrl("https://" + assetHost + OfflineGameWebViewClient.GAME_PATH_PREFIX + encodedPath)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showPlayer() {
+    private fun showPlayer(assetLoader: WebViewAssetLoader, assetHost: String) {
         isPlaying = true
         content.removeAllViews()
 
@@ -525,18 +527,19 @@ class MainActivity : Activity() {
                 allowUniversalAccessFromFileURLs = false
             }
             view.webChromeClient = WebChromeClient()
-            view.webViewClient = OfflineGameWebViewClient(assetLoader, pathHandler) {
-                mainHandler.post {
-                    webView?.let { crashed ->
-                        (crashed.parent as? ViewGroup)?.removeView(crashed)
-                        crashed.destroy()
-                    }
-                    webView = null
-                    showHome("The game renderer stopped unexpectedly.")
-                }
-            }
             view.setBackgroundColor(Color.BLACK)
             webView = view
+        }
+
+        player.webViewClient = OfflineGameWebViewClient(assetLoader, pathHandler, assetHost) {
+            mainHandler.post {
+                webView?.let { crashed ->
+                    (crashed.parent as? ViewGroup)?.removeView(crashed)
+                    crashed.destroy()
+                }
+                webView = null
+                showHome("The game renderer stopped unexpectedly.")
+            }
         }
 
         (player.parent as? ViewGroup)?.removeView(player)
