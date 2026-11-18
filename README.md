@@ -50,6 +50,8 @@ See [playback controls and fullscreen](docs/player-controls.md) for the control 
 
 See [HTML5 runtime compatibility](docs/html5-runtime-compatibility.md) for MIME handling, media seeking, file inputs, downloads, and the device test fixture.
 
+See the [physical-device acceptance checklist](docs/device-validation.md) before considering the offline player baseline fully validated.
+
 See [library management and browser data](docs/library-and-browser-data.md) for rename/search/sort behavior, recovery, per-game save isolation, and data removal.
 
 ## Compatibility

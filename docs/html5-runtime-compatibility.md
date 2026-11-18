@@ -44,6 +44,8 @@ Downloads are limited to local game files. Remote URLs, `blob:` URLs, and `data:
 
 ## Browser APIs and limits
 
-The fixture at [test-fixtures/html5-compatibility](../test-fixtures/html5-compatibility/) exercises ES modules, same-origin JSON fetch, Canvas 2D, WebGL, WebAssembly, dedicated workers, localStorage, IndexedDB, Web Audio, local WAV playback/seeking, the SAF file picker, and a user-mediated local download.
+The fixture at [test-fixtures/html5-compatibility](../test-fixtures/html5-compatibility/) exercises ES modules, same-origin JSON fetch, Canvas 2D, WebGL, WebAssembly, dedicated workers, localStorage, IndexedDB, Web Audio, local WAV playback/seeking, the SAF file picker, and a user-mediated local download. Its storage probes now distinguish first-run initialization from values retained across a reload.
+
+Use the [physical-device acceptance checklist](device-validation.md) to verify the complete player baseline and record device-specific limitations.
 
 The fixture is a device-level diagnostic, not an emulator. Actual support for WebGL, audio/video codecs, workers and browser APIs depends on the installed Android System WebView and device hardware. Service-worker-based offline installation, server-side APIs, WebRTC capture, remote networking and Flash are outside this player baseline.
