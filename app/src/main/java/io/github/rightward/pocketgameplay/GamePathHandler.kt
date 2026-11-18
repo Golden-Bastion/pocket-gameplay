@@ -1,13 +1,14 @@
 package io.github.rightward.pocketgameplay
 
 import android.content.ContentResolver
-import android.webkit.MimeTypeMap
 import android.webkit.WebResourceResponse
 import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
 import java.io.ByteArrayInputStream
+import java.io.EOFException
+import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
-import java.util.Locale
 
 class GamePathHandler(
     private val contentResolver: ContentResolver
@@ -20,6 +21,20 @@ class GamePathHandler(
     }
 
     override fun handle(path: String): WebResourceResponse {
+        return handle(path, rangeHeader = null, method = "GET")
+    }
+
+    fun handle(
+        path: String,
+        rangeHeader: String?,
+        method: String
+    ): WebResourceResponse {
+        if (!method.equals("GET", ignoreCase = true) &&
+            !method.equals("HEAD", ignoreCase = true)
+        ) {
+            return errorResponse(405, "Method Not Allowed", mapOf("Allow" to "GET, HEAD"))
+        }
+
         val segments = RelativeGamePath.parse(path) ?: return notFound()
         var document = gameRoot ?: return notFound()
 
@@ -30,64 +45,156 @@ class GamePathHandler(
 
         if (!document.isFile || !document.canRead()) return notFound()
 
-        val stream = try {
-            contentResolver.openInputStream(document.uri)
-        } catch (_: Exception) {
-            null
-        } ?: return notFound()
+        val contentLength = document.length().coerceAtLeast(0)
+        val isHead = method.equals("HEAD", ignoreCase = true)
+        val rangeResult = if (isHead) {
+            ByteRangeResult.Ignore
+        } else {
+            ByteRangeParser.parse(rangeHeader, contentLength)
+        }
 
-        val mimeType = mimeTypeFor(segments.last())
-        val encoding = if (isTextual(mimeType)) "UTF-8" else null
+        if (rangeResult == ByteRangeResult.Unsatisfiable) {
+            return errorResponse(
+                statusCode = 416,
+                reason = "Range Not Satisfiable",
+                headers = mapOf(
+                    "Accept-Ranges" to "bytes",
+                    "Content-Range" to "bytes */$contentLength"
+                )
+            )
+        }
+
+        val mimeType = GameAssetMimeTypes.forFileName(segments.last())
+        val encoding = if (GameAssetMimeTypes.isTextual(mimeType)) "UTF-8" else null
+        val responseHeaders = linkedMapOf(
+            "Cache-Control" to "no-store",
+            "Accept-Ranges" to "bytes"
+        )
+
+        val statusCode: Int
+        val reasonPhrase: String
+        val bodyLength: Long
+        val bodyStream: InputStream
+
+        when (rangeResult) {
+            is ByteRangeResult.Partial -> {
+                val range = rangeResult.range
+                statusCode = 206
+                reasonPhrase = "Partial Content"
+                bodyLength = range.length
+                responseHeaders["Content-Range"] =
+                    "bytes ${range.start}-${range.endInclusive}/$contentLength"
+                responseHeaders["Content-Length"] = bodyLength.toString()
+
+                bodyStream = if (isHead) {
+                    ByteArrayInputStream(ByteArray(0))
+                } else {
+                    val source = openDocument(document)
+                        ?: return errorResponse(500, "Could Not Open Local File")
+                    try {
+                        skipFully(source, range.start)
+                        LimitedInputStream(source, bodyLength)
+                    } catch (_: IOException) {
+                        source.close()
+                        return errorResponse(500, "Could Not Read Local File")
+                    }
+                }
+            }
+
+            ByteRangeResult.Ignore,
+            ByteRangeResult.Unsatisfiable -> {
+                statusCode = 200
+                reasonPhrase = "OK"
+                bodyLength = contentLength
+                if (contentLength > 0) {
+                    responseHeaders["Content-Length"] = contentLength.toString()
+                }
+                bodyStream = if (isHead) {
+                    ByteArrayInputStream(ByteArray(0))
+                } else {
+                    openDocument(document) ?: return notFound()
+                }
+            }
+        }
 
         return WebResourceResponse(
             mimeType,
             encoding,
-            200,
-            "OK",
-            mapOf("Cache-Control" to "no-store"),
-            stream
+            statusCode,
+            reasonPhrase,
+            responseHeaders,
+            bodyStream
         )
     }
 
-    private fun mimeTypeFor(fileName: String): String {
-        return when (fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
-            "html", "htm" -> "text/html"
-            "css" -> "text/css"
-            "js", "mjs" -> "application/javascript"
-            "json", "map" -> "application/json"
-            "svg" -> "image/svg+xml"
-            "wasm" -> "application/wasm"
-            "xml" -> "application/xml"
-            "txt" -> "text/plain"
-            else -> {
-                val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
-                MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-                    ?: "application/octet-stream"
+    private fun openDocument(document: DocumentFile): InputStream? {
+        return try {
+            contentResolver.openInputStream(document.uri)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun skipFully(input: InputStream, byteCount: Long) {
+        var remaining = byteCount
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) {
+                remaining -= skipped
+            } else {
+                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (read < 0) throw EOFException("Unexpected end of local file while seeking.")
+                remaining -= read
             }
         }
     }
 
-    private fun isTextual(mimeType: String): Boolean {
-        return mimeType.startsWith("text/") ||
-            mimeType in setOf(
-                "application/javascript",
-                "application/json",
-                "application/xml",
-                "image/svg+xml"
-            )
+    private class LimitedInputStream(
+        input: InputStream,
+        private var remaining: Long
+    ) : FilterInputStream(input) {
+        override fun read(): Int {
+            if (remaining <= 0) return -1
+            val value = super.read()
+            if (value >= 0) remaining--
+            return value
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (remaining <= 0) return -1
+            val allowed = minOf(length.toLong(), remaining).toInt()
+            val read = super.read(buffer, offset, allowed)
+            if (read > 0) remaining -= read
+            return read
+        }
+
+        override fun skip(byteCount: Long): Long {
+            if (remaining <= 0) return 0
+            val skipped = super.skip(minOf(byteCount, remaining))
+            remaining -= skipped
+            return skipped
+        }
     }
 
     private fun notFound(): WebResourceResponse = errorResponse(404, "Not Found")
 
     companion object {
-        fun errorResponse(statusCode: Int, reason: String): WebResourceResponse {
+        fun errorResponse(
+            statusCode: Int,
+            reason: String,
+            headers: Map<String, String> = emptyMap()
+        ): WebResourceResponse {
+            val responseHeaders = linkedMapOf("Cache-Control" to "no-store")
+            responseHeaders.putAll(headers)
             val body: InputStream = ByteArrayInputStream(ByteArray(0))
             return WebResourceResponse(
                 "text/plain",
                 "UTF-8",
                 statusCode,
                 reason,
-                mapOf("Cache-Control" to "no-store"),
+                responseHeaders,
                 body
             )
         }
