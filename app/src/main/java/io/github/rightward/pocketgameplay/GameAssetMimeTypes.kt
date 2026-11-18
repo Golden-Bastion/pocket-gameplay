@@ -52,7 +52,7 @@ internal object GameAssetMimeTypes {
     fun forFileName(fileName: String): String {
         val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
         return explicitTypes[extension]
-            ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+            ?: MimeTypeMap.getSingleton()?.getMimeTypeFromExtension(extension)
             ?: "application/octet-stream"
     }
 
