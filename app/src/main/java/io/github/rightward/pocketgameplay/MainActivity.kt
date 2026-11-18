@@ -121,6 +121,7 @@ class MainActivity : Activity() {
         zipImporter = ZipGameImporter(gamesDirectory)
         libraryStore = GameLibraryStore(File(filesDir, "library.properties"))
         faviconCache = GameFaviconCache(File(filesDir, "game-icons"), contentResolver)
+        cleanPendingBrowserProfileDeletions()
         cleanInterruptedImports()
 
         pathHandler = GamePathHandler(contentResolver)
@@ -1318,11 +1319,47 @@ class MainActivity : Activity() {
         }
 
         try {
-            if (currentWebViewGameId == game.id) destroyWebView()
-            ProfileStore.getInstance().deleteProfile(game.browserProfile)
-            showHome("A data reset was requested. The game's profile will be recreated the next time it is played.")
+            val oldProfile = game.browserProfile
+            libraryStore.rotateBrowserProfile(game.id, oldProfile)
+            if (currentWebViewGameId == game.id || currentWebViewProfile == oldProfile) {
+                destroyWebView()
+            }
+
+            val oldProfileDeleted = deleteQueuedBrowserProfile(oldProfile)
+            val message = if (oldProfileDeleted) {
+                "Game data was reset. The next launch will use a fresh profile."
+            } else {
+                "Game data was reset and the next launch will use a fresh profile. " +
+                    "The old profile is queued for cleanup after the app process restarts."
+            }
+            showHome(message)
         } catch (exception: Exception) {
-            showHome("Could not clear this game's data: " + (exception.message ?: "Unknown error."))
+            showHome("Could not reset this game's data: " + (exception.message ?: "Unknown error."))
+        }
+    }
+
+    /**
+     * WebView may retain a named profile for the lifetime of the app process even after destroy().
+     * Keep failed deletions persisted and retry them on the next cold start before creating a WebView.
+     */
+    private fun cleanPendingBrowserProfileDeletions() {
+        if (!supportsPerGameProfiles()) return
+        val pending = try {
+            libraryStore.pendingBrowserProfileDeletions()
+        } catch (_: IOException) {
+            return
+        }
+        pending.forEach(::deleteQueuedBrowserProfile)
+    }
+
+    private fun deleteQueuedBrowserProfile(profileName: String): Boolean {
+        return try {
+            ProfileStore.getInstance().deleteProfile(profileName)
+            libraryStore.completeBrowserProfileDeletion(profileName)
+            true
+        } catch (_: Exception) {
+            // A profile still held by WebView remains queued for the next cold app start.
+            false
         }
     }
 
@@ -1331,25 +1368,29 @@ class MainActivity : Activity() {
         if (game.browserProfile.isBlank() || !supportsPerGameProfiles()) return
         if (currentWebViewProfile == game.browserProfile) destroyWebView()
 
-        try {
-            ProfileStore.getInstance().deleteProfile(game.browserProfile)
-        } catch (exception: Exception) {
-            throw IOException("Could not delete this game's browser data.", exception)
-        }
+        libraryStore.queueBrowserProfileDeletion(game.browserProfile)
+        deleteQueuedBrowserProfile(game.browserProfile)
     }
 
     private fun destroyWebView() {
         cancelDeveloperConsolePolling()
         developerConsolePageReady = false
-        webView?.let { view ->
-            view.stopLoading()
-            (view.parent as? ViewGroup)?.removeView(view)
-            view.destroy()
-        }
+        val view = webView
         webView = null
         currentWebViewProfile = null
         currentWebViewGameId = null
         if (::pathHandler.isInitialized) pathHandler.clearGameRoot()
+
+        view?.let {
+            runCatching { it.stopLoading() }
+            runCatching { it.onPause() }
+            (it.parent as? ViewGroup)?.removeView(it)
+            runCatching { it.webChromeClient = null }
+            runCatching { it.webViewClient = null }
+            runCatching { it.setDownloadListener(null) }
+            runCatching { it.removeAllViews() }
+            runCatching { it.destroy() }
+        }
     }
 
     private fun confirmRemoveGame(game: LibraryGame) {
