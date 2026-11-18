@@ -54,6 +54,8 @@ See the [physical-device acceptance checklist](docs/device-validation.md) before
 
 See [library management and browser data](docs/library-and-browser-data.md) for rename/search/sort behavior, recovery, per-game save isolation, and data removal.
 
+See [visual identity and design tokens](docs/visual-identity.md) for the app's palette, component styling, and brand principles.
+
 ## Compatibility
 
 Games run inside the Android System WebView installed on the device. Compatibility depends on the device's WebView version and on the browser APIs used by the game. This project targets ordinary HTML5 games; it does not emulate Flash or desktop browser runtimes.
