@@ -30,6 +30,28 @@ class DeveloperConsoleTest {
     }
 
     @Test
+    fun exposesLoadingAndFailureStatesForNativeFeedback() {
+        val script = DeveloperConsole.TOGGLE_SCRIPT
+
+        listOf("loading", "shown", "hidden", "load_error", "init_error", "timeout").forEach { status ->
+            assertTrue("Missing console state: $status", script.contains("'$status'"))
+        }
+        assertTrue(script.contains("window.setTimeout"))
+        assertTrue(script.contains("script.onerror"))
+        assertTrue(script.contains("script.parentNode.removeChild(script)"))
+        assertTrue(DeveloperConsole.STATUS_SCRIPT.contains("state.status"))
+    }
+
+    @Test
+    fun loadsOnlyTheBundledLocalAsset() {
+        val script = DeveloperConsole.TOGGLE_SCRIPT
+
+        assertTrue(script.contains("script.src = '/__pocket/eruda.js'"))
+        assertTrue(!script.contains("https://"))
+        assertTrue(!script.contains("http://"))
+    }
+
+    @Test
     fun initializesExpectedMobileDebugTools() {
         val script = DeveloperConsole.TOGGLE_SCRIPT
 
