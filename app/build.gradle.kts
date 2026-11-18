@@ -62,14 +62,33 @@ val extractEruda by tasks.registering {
         val erudaScript = packageFiles.matching {
             include("package/eruda.js")
         }.singleFile
-        val erudaLicense = packageFiles.matching {
-            include("package/LICENSE")
-        }.singleFile
-
         val developerAssets = erudaAssets.get().asFile.resolve("developer")
         developerAssets.mkdirs()
         erudaScript.copyTo(developerAssets.resolve("eruda.js"), overwrite = true)
-        erudaLicense.copyTo(developerAssets.resolve("LICENSE"), overwrite = true)
+        developerAssets.resolve("LICENSE").writeText(
+            """The MIT License (MIT)
+
+Copyright (c) 2016-present liriliri
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+        )
         developerAssets.resolve("VERSION.txt").writeText(
             "Eruda $erudaVersion\n" +
                 "Source: https://www.npmjs.com/package/eruda\n" +
