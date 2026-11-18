@@ -64,7 +64,7 @@ The Activity handles orientation and related screen/keyboard configuration chang
 
 An optional native **Dev** control injects the pinned Eruda bundle into the active game only when requested. The bundle is built into the APK and served through a reserved `/__pocket/` path on the current per-game origin. The route is handled by `WebViewAssetLoader.AssetsPathHandler` against the app's root asset directory, not by the user-selected game folder.
 
-The game origin remains isolated from other games. Eruda's own floating entry button is hidden; the native player button controls its visibility. Injection is lazy and idempotent within a page. The developer console uses the game's JavaScript realm and is not a security boundary: game code can inspect or interfere with the injected tool.
+The game origin remains isolated from other games. Eruda's own floating entry button is hidden; the native player button controls its visibility. Injection is lazy and idempotent within a page. The native player polls a page-local loading status and reports asset, initialization and timeout failures with native feedback. CI inspects both debug and release APKs for the actual Eruda bundle, license and version metadata. No JavaScript bridge is added. The developer console uses the game's JavaScript realm and is not a security boundary: game code can inspect or interfere with the injected tool.
 
 The build downloads the exact Eruda 3.4.3 npm archive and checks its SHA-512 integrity before extracting the browser bundle and including its MIT notice. Runtime debugging is offline and does not add the Android INTERNET permission.
 
