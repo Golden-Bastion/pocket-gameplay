@@ -92,7 +92,12 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 - [ ] To exercise reconnection, move/rename the selected source folder so the saved start page can no longer be opened, then tap **Play**. Use the recovery dialog's **Reconnect** action to select the replacement folder; choose an alternative HTML/HTM start page if the original is absent.
 - [ ] Confirm the library title and shortcut remain and the game can launch from the replacement folder. If the replacement selection resulted in a different SAF URI, confirm the same game still uses its prior browser data.
 - [ ] Remove an imported ZIP game. Confirm its private imported copy is removed from the library and that no unrelated game or folder-backed source folder is removed.
-- [ ] If the library identifies an imported game's files as missing, test **Replace ZIP** with a valid archive and confirm its library entry/title remain. A deliberately invalid archive should fail without replacing the existing game files.
+- [ ] On a healthy imported game, use **Update ZIP** and select a newer valid archive. Confirm the existing library card is updated in place and no duplicate item is created.
+- [ ] Use a replacement archive with multiple HTML/HTM pages. Choose a different start page and confirm the updated game launches from it.
+- [ ] Cancel the document picker and, separately, the start-page chooser. Confirm the prior game files remain usable after each cancellation.
+- [ ] Try an invalid ZIP and a valid ZIP with no HTML/HTM page. Each must fail without replacing the previous game files.
+- [ ] Before and after updating, compare the library ID implicitly through the same card, display title, and save-data behavior. Reload/reopen the updated game and confirm its prior localStorage/IndexedDB values remain available.
+- [ ] Confirm folder-backed shortcuts do not show **Update ZIP** and remain linked to their original external folders.
 
 ## G. Security boundaries
 
