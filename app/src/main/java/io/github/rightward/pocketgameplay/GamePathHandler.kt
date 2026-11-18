@@ -18,6 +18,10 @@ class GamePathHandler(
         gameRoot = root
     }
 
+    fun clearGameRoot() {
+        gameRoot = null
+    }
+
     fun handle(path: String): WebResourceResponse {
         return handle(path, rangeHeader = null, method = "GET")
     }

@@ -64,6 +64,9 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 - [ ] Press Android Back with the controls panel expanded; it should close the panel before leaving the game.
 - [ ] With no overlay open, use Back in a game that has navigation history; it should navigate game history before returning to the library.
 - [ ] Return to the library and confirm the game entry and its browser-managed saves remain present.
+- [ ] Return from a throwaway imported game to the library, then immediately remove that entry. Confirm deletion completes without an "in-use" or locked-files error.
+- [ ] Return from an imported game to the library, then immediately replace/update its ZIP when that workflow is available. Confirm the previous WebView no longer holds the extracted files.
+- [ ] Reopen a retained game after returning to the library and confirm its localStorage/IndexedDB values are still present; closing the WebView must not clear its persistent browser profile.
 
 ## E. Library lifecycle and save isolation
 

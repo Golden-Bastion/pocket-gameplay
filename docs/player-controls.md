@@ -4,7 +4,7 @@
 
 The active game is shown edge-to-edge in a native `WebView`. A small **Controls** button is the only persistent player overlay. Opening it reveals a compact native panel with:
 
-- **Library** — stops the active load and returns to the library without removing the library record or clearing browser-managed save data.
+- **Library** — stops and destroys the active WebView, releases the game's runtime resources, and returns to the library without removing the library record or clearing persistent browser-managed save data. The in-memory game session ends; localStorage, IndexedDB, cookies, and the named browser profile remain.
 - **Reload** — reloads the current page in the same WebView.
 - **Fullscreen** — hides the app's system bars and native player controls for an unobstructed game view.
 - **Dev** — opens or closes the optional Eruda developer console.
@@ -41,4 +41,4 @@ The Activity handles orientation, screen-size, screen-layout, smallest-screen-si
 
 ## Limitations
 
-Fullscreen rendering depends on the device's Android System WebView. Some games implement their own fullscreen UI in page content rather than using the browser fullscreen API; those in-page controls remain the game's responsibility. Returning to the library preserves the game's origin storage, but this does not guarantee preservation of an in-memory game session after the game is later reloaded.
+Fullscreen rendering depends on the device's Android System WebView. Some games implement their own fullscreen UI in page content rather than using the browser fullscreen API; those in-page controls remain the game's responsibility. Returning to the library destroys the WebView and ends the in-memory game session. Persistent browser-managed data remains in the game's profile and is available the next time the game is opened.

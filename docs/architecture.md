@@ -52,6 +52,8 @@ The manual fixture in `test-fixtures/html5-compatibility` exercises browser APIs
 
 The WebView is hosted in a root `FrameLayout` with a small always-visible Controls button and an initially collapsed native control panel. The panel provides Library, Reload, Fullscreen, Dev, and Close actions. Controls are transient so ordinary play is not obstructed.
 
+Returning to the library stops and destroys the active WebView rather than leaving a detached instance alive. The active `GamePathHandler` root reference and Activity-held WebView/profile/game references are cleared. The named WebView profile itself is not deleted, so persistent browser-managed data remains available when the game is opened again. Opening another game creates a fresh WebView and attaches its selected profile before loading the new game root.
+
 App immersive fullscreen hides system bars and the native player chrome; Back restores them. HTML fullscreen and fullscreen media are handled through `WebChromeClient.onShowCustomView` / `onHideCustomView`. The supplied custom view is added above the WebView and then removed when fullscreen ends, while the prior window fullscreen flag and system UI visibility are restored.
 
 Back priority is centralized in `PlayerBackResolver` and covered with JVM tests: collapse controls, exit WebView fullscreen, exit app immersive fullscreen, navigate WebView history, return to the library, then normal Activity behavior.

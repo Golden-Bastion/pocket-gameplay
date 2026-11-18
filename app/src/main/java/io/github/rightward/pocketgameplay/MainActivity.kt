@@ -119,6 +119,7 @@ class MainActivity : Activity() {
         currentGameAssetHost = null
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
+        destroyWebView()
         isPlaying = false
         controlsExpanded = false
         developerConsoleButton = null
@@ -1204,6 +1205,7 @@ class MainActivity : Activity() {
         webView = null
         currentWebViewProfile = null
         currentWebViewGameId = null
+        if (::pathHandler.isInitialized) pathHandler.clearGameRoot()
     }
 
     private fun confirmRemoveGame(game: LibraryGame) {
@@ -1331,7 +1333,6 @@ class MainActivity : Activity() {
     private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, game: LibraryGame) {
         cancelPendingFileChooser()
         webView?.stopLoading()
-        pathHandler.setGameRoot(root)
 
         val originKey = game.originKey.takeIf { it.isNotBlank() } ?: when (game.storageType) {
             LibraryStorageType.FOLDER -> GameOrigin.forFolderUri(game.sourceUri)
@@ -1348,6 +1349,7 @@ class MainActivity : Activity() {
             .build()
         showPlayer(assetLoader, assetHost, game.browserProfile)
         currentWebViewGameId = game.id
+        pathHandler.setGameRoot(root)
 
         val encodedPath = entryPoint.relativePath
             .split('/')
@@ -1440,14 +1442,10 @@ class MainActivity : Activity() {
             },
             onRendererGone = {
                 mainHandler.post {
-                    webView?.let { crashed ->
-                        (crashed.parent as? ViewGroup)?.removeView(crashed)
-                        crashed.destroy()
+                    if (webView === player) {
+                        destroyWebView()
+                        showHome("The game renderer stopped unexpectedly.")
                     }
-                    webView = null
-                    currentWebViewProfile = null
-                    currentWebViewGameId = null
-                    showHome("The game renderer stopped unexpectedly.")
                 }
             }
         )
