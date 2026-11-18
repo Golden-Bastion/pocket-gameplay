@@ -1,16 +1,19 @@
 # Playback controls and fullscreen
 
-## Player control surface
+## Player toolbar
 
-The active game is shown edge-to-edge in a native `WebView`. A small **Controls** button is the only persistent player overlay. Opening it reveals a compact native panel with:
+The active game uses a fixed native toolbar above its WebView viewport. The toolbar takes up its own layout space, so the game page begins underneath it instead of rendering behind an overlay.
 
-- **Library** — stops and destroys the active WebView, releases the game's runtime resources, and returns to the library without removing the library record or clearing persistent browser-managed save data. The in-memory game session ends; localStorage, IndexedDB, cookies, and the named browser profile remain.
-- **Reload** — reloads the current page in the same WebView.
-- **Fullscreen** — hides the app's system bars and native player controls for an unobstructed game view.
-- **Dev** — opens or closes the optional Eruda developer console.
-- **Close controls** — dismisses the panel.
+The toolbar contains:
 
-The panel is hidden by default, so the game retains the available screen area during normal play. The developer-console control remains inside the panel.
+- **Exit icon** — stops and destroys the active WebView and returns to the library. It does not remove the library entry or clear persistent browser-managed save data.
+- **Reload icon** — reloads the current page in the same WebView and profile.
+- **Game title** — displays the current library title, truncating long names rather than pushing the toolbar actions off screen.
+- **More menu** — contains **Fullscreen** and **Dev**. Dev remains disabled until the game page finishes loading. Once loaded, Eruda's own floating button controls its panel.
+
+The toolbar respects display cutouts and system-bar insets. Immersive fullscreen and HTML fullscreen hide the toolbar; leaving fullscreen restores it. The game viewport expands into the space previously occupied by the toolbar while fullscreen is active.
+
+The More menu is a native Android popup. Opening it counts as an expanded player control for Back-navigation priority, and selecting an action or dismissing the popup closes it.
 
 ## Game touch gestures
 
@@ -21,7 +24,7 @@ The WebView receives game touch input directly. On Android 10 and newer, Pocket 
 The player WebView's `WebChromeClient` handles the HTML fullscreen custom-view lifecycle:
 
 - `onShowCustomView` adds the supplied fullscreen view above the player and enters immersive system UI.
-- `onHideCustomView` removes the supplied view, restores the previous window fullscreen flag and system UI visibility, and reveals the player controls again.
+- `onHideCustomView` removes the supplied view, restores the previous window fullscreen flag and system UI visibility, and reveals the player toolbar again.
 - Android Back requests exit from the custom view before navigating game history or leaving the player.
 
 This also covers WebView's HTML media fullscreen path, subject to the codecs and media features supported by the device's Android System WebView.
@@ -32,7 +35,7 @@ Android 13 and newer use the platform `OnBackInvokedDispatcher` callback, with p
 
 Back is resolved in this order:
 
-1. Close an expanded native controls panel.
+1. Dismiss the open player More menu.
 2. Exit an HTML fullscreen custom view.
 3. Exit the player's immersive fullscreen mode.
 4. Navigate backward through the game's WebView history.

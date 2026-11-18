@@ -15,12 +15,10 @@
     <string name="developer_console_description">Load the game developer console</string>
     <string name="developer_console_loading">Loading…</string>
     <string name="developer_console_ready">Dev Loaded</string>
-    <string name="player_controls">Controls</string>
-    <string name="player_controls_description">Show game playback controls</string>
-    <string name="return_to_library">Library</string>
+    <string name="player_exit_description">Return to library</string>
+    <string name="player_reload_description">Reload game</string>
+    <string name="player_menu_description">More game options</string>
     <string name="reload_game">Reload</string>
     <string name="toggle_fullscreen">Fullscreen</string>
-    <string name="exit_fullscreen">Exit fullscreen</string>
-    <string name="close_controls">Close controls</string>
     <string name="press_back_again_to_exit">Press Back again to exit</string>
 </resources>

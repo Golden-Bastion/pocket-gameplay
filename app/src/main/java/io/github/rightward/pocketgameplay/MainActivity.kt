@@ -16,9 +16,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.InputType
+import android.text.TextUtils
 import android.text.TextWatcher
 import android.text.Editable
 import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -33,8 +36,10 @@ import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -68,11 +73,12 @@ class MainActivity : Activity() {
     private var librarySortOrder = LibrarySortOrder.NAME
     private var pendingFolderReconnect: LibraryGame? = null
     private var pendingZipReplacement: LibraryGame? = null
-    private var developerConsoleButton: Button? = null
+    private var developerConsoleMenuItem: MenuItem? = null
     private var developerConsolePoll: Runnable? = null
     private var developerConsolePageReady = false
-    private var playerControlsButton: Button? = null
-    private var playerControlsPanel: LinearLayout? = null
+    private var playerControlsPopup: PopupMenu? = null
+    private var playerToolbar: LinearLayout? = null
+    private var playerViewport: FrameLayout? = null
     private var controlsExpanded = false
     private var isImmersiveFullscreen = false
     private var fullscreenCustomView: View? = null
@@ -129,10 +135,12 @@ class MainActivity : Activity() {
         exitImmersiveFullscreen()
         destroyWebView()
         isPlaying = false
+        playerControlsPopup?.dismiss()
+        playerControlsPopup = null
         controlsExpanded = false
-        developerConsoleButton = null
-        playerControlsButton = null
-        playerControlsPanel = null
+        developerConsoleMenuItem = null
+        playerToolbar = null
+        playerViewport = null
         content.removeAllViews()
 
         val page = LinearLayout(this).apply {
@@ -1360,7 +1368,7 @@ class MainActivity : Activity() {
                 WebViewAssetLoader.AssetsPathHandler(this)
             )
             .build()
-        showPlayer(assetLoader, assetHost, game.browserProfile)
+        showPlayer(assetLoader, assetHost, game.browserProfile, game.title)
         currentWebViewGameId = game.id
         pathHandler.setGameRoot(root)
 
@@ -1374,10 +1382,50 @@ class MainActivity : Activity() {
     private fun showPlayer(
         assetLoader: WebViewAssetLoader,
         assetHost: String,
-        profileName: String
+        profileName: String,
+        gameTitle: String
     ) {
         isPlaying = true
         content.removeAllViews()
+
+        val playerRoot = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+        }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(getColor(R.color.pg_surface))
+            elevation = dp(4).toFloat()
+            setPaddingRelative(dp(8), dp(4), dp(8), dp(4))
+        }
+        val viewportFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        playerRoot.addView(
+            toolbar,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        playerRoot.addView(
+            viewportFrame,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+        content.addView(
+            playerRoot,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        playerToolbar = toolbar
+        playerViewport = viewportFrame
 
         val selectedProfile = profileName.takeIf {
             it.isNotBlank() && supportsPerGameProfiles()
@@ -1446,8 +1494,8 @@ class MainActivity : Activity() {
                         cancelPendingFileChooser()
                         cancelDeveloperConsolePolling()
                         developerConsolePageReady = false
-                        developerConsoleButton?.apply {
-                            text = getString(R.string.developer_console)
+                        developerConsoleMenuItem?.apply {
+                            title = getString(R.string.developer_console)
                             isEnabled = false
                         }
                     }
@@ -1457,8 +1505,8 @@ class MainActivity : Activity() {
                 mainHandler.post {
                     if (webView === player) {
                         developerConsolePageReady = true
-                        developerConsoleButton?.apply {
-                            text = getString(R.string.developer_console)
+                        developerConsoleMenuItem?.apply {
+                            title = getString(R.string.developer_console)
                             isEnabled = true
                         }
                     }
@@ -1475,7 +1523,8 @@ class MainActivity : Activity() {
         )
 
         (player.parent as? ViewGroup)?.removeView(player)
-        content.addView(
+        val viewport = playerViewport ?: return
+        viewport.addView(
             player,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1484,7 +1533,7 @@ class MainActivity : Activity() {
         )
 
         configureGameSwipeGestureHandling(player)
-        createPlayerControls(player)
+        createPlayerControls(player, gameTitle)
     }
 
     /**
@@ -1597,9 +1646,11 @@ class MainActivity : Activity() {
         exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
         destroyWebView()
-        developerConsoleButton = null
-        playerControlsButton = null
-        playerControlsPanel = null
+        playerControlsPopup?.dismiss()
+        playerControlsPopup = null
+        developerConsoleMenuItem = null
+        playerToolbar = null
+        playerViewport = null
         super.onDestroy()
     }
 
@@ -1770,13 +1821,13 @@ class MainActivity : Activity() {
     }
 
     private fun toggleDeveloperConsole(player: WebView) {
-        val button = developerConsoleButton ?: return
+        val menuItem = developerConsoleMenuItem ?: return
         if (webView !== player || !developerConsolePageReady) return
 
         cancelDeveloperConsolePolling()
-        button.isEnabled = false
+        menuItem.isEnabled = false
         player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT) { result ->
-            if (webView !== player || developerConsoleButton !== button || !developerConsolePageReady) return@evaluateJavascript
+            if (webView !== player || developerConsoleMenuItem !== menuItem || !developerConsolePageReady) return@evaluateJavascript
 
             when (developerConsoleStatus(result)) {
                 "loading" -> {
@@ -1797,13 +1848,13 @@ class MainActivity : Activity() {
         var attemptsRemaining = DEVELOPER_CONSOLE_POLL_ATTEMPTS
         lateinit var poll: Runnable
         poll = Runnable {
-            if (webView !== player || developerConsoleButton == null || !developerConsolePageReady) {
+            if (webView !== player || developerConsoleMenuItem == null || !developerConsolePageReady) {
                 developerConsolePoll = null
                 return@Runnable
             }
 
             player.evaluateJavascript(DeveloperConsole.STATUS_SCRIPT) { result ->
-                if (webView !== player || developerConsoleButton == null || !developerConsolePageReady) {
+                if (webView !== player || developerConsoleMenuItem == null || !developerConsolePageReady) {
                     developerConsolePoll = null
                     return@evaluateJavascript
                 }
@@ -1834,19 +1885,19 @@ class MainActivity : Activity() {
     }
 
     private fun applyDeveloperConsoleStatus(status: String) {
-        val button = developerConsoleButton ?: return
+        val menuItem = developerConsoleMenuItem ?: return
         when (status) {
             "loading" -> {
-                button.text = getString(R.string.developer_console_loading)
-                button.isEnabled = false
+                menuItem.title = getString(R.string.developer_console_loading)
+                menuItem.isEnabled = false
             }
             "ready" -> {
-                button.text = getString(R.string.developer_console_ready)
-                button.isEnabled = false
+                menuItem.title = getString(R.string.developer_console_ready)
+                menuItem.isEnabled = false
             }
             else -> {
-                button.text = getString(R.string.developer_console)
-                button.isEnabled = developerConsolePageReady
+                menuItem.title = getString(R.string.developer_console)
+                menuItem.isEnabled = developerConsolePageReady
                 val message = when (status) {
                     "load_error" ->
                         "Dev console asset could not load. The bundled Eruda file or local asset route may be missing."
@@ -1862,77 +1913,100 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createPlayerControls(player: WebView) {
-        val controlsButton = Button(this).apply {
-            text = getString(R.string.player_controls)
-            contentDescription = getString(R.string.player_controls_description)
-            isAllCaps = false
-            elevation = dp(8).toFloat()
-            setOnClickListener { setPlayerControlsExpanded(!controlsExpanded) }
-        }
-        playerControlsButton = controlsButton
-        content.addView(
-            controlsButton,
-            FrameLayout.LayoutParams(dp(112), dp(46), Gravity.TOP or Gravity.START).apply {
-                topMargin = dp(12)
-                marginStart = dp(12)
-            }
-        )
+    private fun createPlayerControls(player: WebView, gameTitle: String) {
+        val toolbar = playerToolbar ?: return
 
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundResource(R.drawable.bg_library_card)
-            elevation = dp(12).toFloat()
-            visibility = View.GONE
-        }
-
-        fun addAction(label: Int, action: () -> Unit): Button {
-            val button = Button(this).apply {
-                text = getString(label)
-                isAllCaps = false
-                textSize = 13f
-                minHeight = dp(44)
+        fun addIconButton(icon: Int, description: Int, action: () -> Unit): ImageButton {
+            return ImageButton(this).apply {
+                setImageResource(icon)
+                setColorFilter(getColor(R.color.pg_text_primary))
+                contentDescription = getString(description)
+                scaleType = ImageView.ScaleType.CENTER
+                isFocusable = true
+                isClickable = true
+                val selectableBackground = android.util.TypedValue()
+                if (theme.resolveAttribute(
+                        android.R.attr.selectableItemBackgroundBorderless,
+                        selectableBackground,
+                        true
+                    )
+                ) {
+                    setBackgroundResource(selectableBackground.resourceId)
+                }
                 setOnClickListener { action() }
             }
-            panel.addView(
-                button,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(46)
-                ).apply {
-                    bottomMargin = dp(4)
-                }
-            )
-            return button
         }
 
-        addAction(R.string.return_to_library) { returnToLibrary() }
-        addAction(R.string.reload_game) {
+        val quitButton = addIconButton(
+            R.drawable.ic_player_exit,
+            R.string.player_exit_description
+        ) { returnToLibrary() }
+        toolbar.addView(quitButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+
+        val reloadButton = addIconButton(
+            R.drawable.ic_player_reload,
+            R.string.player_reload_description
+        ) {
             setPlayerControlsExpanded(false)
-            developerConsoleButton?.isEnabled = false
+            developerConsoleMenuItem?.apply {
+                title = getString(R.string.developer_console)
+                isEnabled = false
+            }
             player.reload()
         }
-        addAction(R.string.toggle_fullscreen) { enterImmersiveFullscreen() }
-
-        developerConsoleButton = addAction(R.string.developer_console) {
-            toggleDeveloperConsole(player)
-        }.apply {
-            contentDescription = getString(R.string.developer_console_description)
-            isEnabled = false
-        }
-
-        addAction(R.string.close_controls) { setPlayerControlsExpanded(false) }
-
-        playerControlsPanel = panel
-        content.addView(
-            panel,
-            FrameLayout.LayoutParams(dp(164), ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.TOP or Gravity.START
-                topMargin = dp(64)
-                marginStart = dp(12)
-            }
+        toolbar.addView(
+            reloadButton,
+            LinearLayout.LayoutParams(dp(48), dp(48))
         )
+
+        val title = TextView(this).apply {
+            text = gameTitle
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.pg_text_primary))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            isSingleLine = true
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
+        }
+        toolbar.addView(
+            title,
+            LinearLayout.LayoutParams(0, dp(48), 1f)
+        )
+
+        val menuButton = addIconButton(
+            R.drawable.ic_player_menu,
+            R.string.player_menu_description
+        ) {
+            setPlayerControlsExpanded(!controlsExpanded)
+        }
+        toolbar.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+
+        val popup = PopupMenu(this, menuButton)
+        popup.gravity = Gravity.END
+        popup.menu.add(Menu.NONE, PLAYER_MENU_FULLSCREEN, Menu.NONE, getString(R.string.toggle_fullscreen))
+        val devItem = popup.menu.add(
+            Menu.NONE,
+            PLAYER_MENU_DEVELOPER_CONSOLE,
+            Menu.NONE,
+            getString(R.string.developer_console)
+        ).apply {
+            isEnabled = developerConsolePageReady
+        }
+        developerConsoleMenuItem = devItem
+        popup.setOnMenuItemClickListener { item ->
+            setPlayerControlsExpanded(false)
+            when (item.itemId) {
+                PLAYER_MENU_FULLSCREEN -> enterImmersiveFullscreen()
+                PLAYER_MENU_DEVELOPER_CONSOLE -> toggleDeveloperConsole(player)
+            }
+            true
+        }
+        popup.setOnDismissListener {
+            controlsExpanded = false
+        }
+        playerControlsPopup = popup
         content.requestApplyInsets()
     }
 
@@ -1942,29 +2016,25 @@ class MainActivity : Activity() {
         } else {
             leftInset
         }
-        playerControlsButton?.let { button ->
-            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.topMargin = dp(12) + topInset
-                params.marginStart = dp(12) + startInset
-                button.layoutParams = params
-            }
+        val endInset = if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            leftInset
+        } else {
+            rightInset
         }
-        playerControlsPanel?.let { panel ->
-            (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.topMargin = dp(64) + topInset
-                params.marginStart = dp(12) + startInset
-                panel.layoutParams = params
-            }
-        }
+        playerToolbar?.setPaddingRelative(
+            dp(8) + startInset,
+            dp(4) + topInset,
+            dp(8) + endInset,
+            dp(4)
+        )
     }
 
     private fun setPlayerControlsExpanded(expanded: Boolean) {
         controlsExpanded = expanded
-        playerControlsPanel?.visibility = if (expanded) View.VISIBLE else View.GONE
-        playerControlsButton?.text = if (expanded) {
-            getString(R.string.player_controls) + " ▲"
+        if (expanded) {
+            playerControlsPopup?.show()
         } else {
-            getString(R.string.player_controls) + " ▼"
+            playerControlsPopup?.dismiss()
         }
     }
 
@@ -1981,7 +2051,7 @@ class MainActivity : Activity() {
         setPlayerControlsExpanded(false)
         immersivePreviousUiVisibility = window.decorView.systemUiVisibility
         isImmersiveFullscreen = true
-        playerControlsButton?.visibility = View.GONE
+        playerToolbar?.visibility = View.GONE
         window.decorView.systemUiVisibility = immersiveSystemUiFlags()
     }
 
@@ -1993,7 +2063,7 @@ class MainActivity : Activity() {
             window.decorView.systemUiVisibility = it
         }
         immersivePreviousUiVisibility = null
-        playerControlsButton?.visibility = if (isPlaying && fullscreenCustomView == null) {
+        playerToolbar?.visibility = if (isPlaying && fullscreenCustomView == null) {
             View.VISIBLE
         } else {
             View.GONE
@@ -2011,7 +2081,7 @@ class MainActivity : Activity() {
         }
 
         setPlayerControlsExpanded(false)
-        playerControlsButton?.visibility = View.GONE
+        playerToolbar?.visibility = View.GONE
 
         fullscreenPreviousUiVisibility = window.decorView.systemUiVisibility
         fullscreenPreviousWindowFlag =
@@ -2050,7 +2120,7 @@ class MainActivity : Activity() {
         }
         fullscreenPreviousUiVisibility = null
 
-        playerControlsButton?.visibility = if (isPlaying && !isImmersiveFullscreen) {
+        playerToolbar?.visibility = if (isPlaying && !isImmersiveFullscreen) {
             View.VISIBLE
         } else {
             View.GONE
@@ -2082,6 +2152,8 @@ class MainActivity : Activity() {
         private const val REQUEST_GAME_DOWNLOAD = 44
         private const val REQUEST_FOLDER_RECONNECT = 45
         private const val REQUEST_ZIP_REPLACEMENT = 46
+        private const val PLAYER_MENU_FULLSCREEN = 1
+        private const val PLAYER_MENU_DEVELOPER_CONSOLE = 2
         private const val DEVELOPER_CONSOLE_POLL_ATTEMPTS = 80
         private const val DEVELOPER_CONSOLE_POLL_INTERVAL_MS = 200L
     }
