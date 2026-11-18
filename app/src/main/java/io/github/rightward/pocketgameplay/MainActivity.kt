@@ -689,6 +689,11 @@ class MainActivity : Activity() {
             assetLoader = assetLoader,
             gamePathHandler = pathHandler,
             assetHost = assetHost,
+            onPageStarted = {
+                mainHandler.post {
+                    if (webView === player) developerConsoleButton?.isEnabled = false
+                }
+            },
             onPageFinished = {
                 mainHandler.post {
                     if (webView === player) developerConsoleButton?.isEnabled = true
@@ -894,8 +899,7 @@ class MainActivity : Activity() {
             return
         }
 
-        controlsExpanded = false
-        playerControlsPanel?.visibility = View.GONE
+        setPlayerControlsExpanded(false)
         playerControlsButton?.visibility = View.GONE
 
         fullscreenPreviousUiVisibility = window.decorView.systemUiVisibility
