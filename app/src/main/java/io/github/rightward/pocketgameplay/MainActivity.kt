@@ -526,7 +526,15 @@ class MainActivity : Activity() {
                         else -> null
                     }
                     if (root != null) faviconCache.refresh(game.id, root, game.entryPoint)
-                    faviconCache.load(game.id)
+                    val stillInLibrary = runCatching {
+                        libraryStore.all().any { it.id == game.id }
+                    }.getOrNull()
+                    if (stillInLibrary == false) {
+                        faviconCache.remove(game.id)
+                        null
+                    } else {
+                        faviconCache.load(game.id)
+                    }
                 }.getOrNull()
 
                 mainHandler.post {
