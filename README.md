@@ -17,6 +17,9 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Separate local web origins for each game, isolating browser-managed storage such as `localStorage` and IndexedDB.
 - ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
 - Optional in-game developer console powered by locally bundled Eruda 3.4.3.
+- Collapsible native playback controls for returning to the library, reloading the current game, entering immersive fullscreen, and opening the developer console.
+- WebView HTML fullscreen and fullscreen media custom-view handling, including restoration of window and system UI state.
+- Back navigation prioritizes closing player overlays and fullscreen modes before game history and library exit.
 
 ## Build
 
@@ -35,6 +38,8 @@ gradle wrapper --gradle-version 8.13
 Then use `./gradlew` for subsequent builds. The first build on a clean workspace also downloads the pinned Eruda package from npm and verifies its SHA-512 integrity before packaging the script and MIT notice into the APK. No network access is needed to use the developer console at runtime.
 
 See [the developer console guide](docs/developer-console.md) for its behavior and security boundaries.
+
+See [playback controls and fullscreen](docs/player-controls.md) for the control surface, Back priority, fullscreen lifecycle, and rotation behavior.
 
 ## Compatibility
 

@@ -10,4 +10,11 @@
     <string name="folder_picker_title">Select a folder containing an HTML5 game</string>
     <string name="developer_console">Dev</string>
     <string name="developer_console_description">Open or close the game developer console</string>
+    <string name="player_controls">Controls</string>
+    <string name="player_controls_description">Show game playback controls</string>
+    <string name="return_to_library">Library</string>
+    <string name="reload_game">Reload</string>
+    <string name="toggle_fullscreen">Fullscreen</string>
+    <string name="exit_fullscreen">Exit fullscreen</string>
+    <string name="close_controls">Close controls</string>
 </resources>

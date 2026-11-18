@@ -4,16 +4,23 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.Configuration
 import android.database.Cursor
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.Button
@@ -39,6 +46,16 @@ class MainActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private var developerConsoleButton: Button? = null
+    private var playerControlsButton: Button? = null
+    private var playerControlsPanel: LinearLayout? = null
+    private var controlsExpanded = false
+    private var isImmersiveFullscreen = false
+    private var fullscreenCustomView: View? = null
+    private var fullscreenCustomViewCallback: WebChromeClient.CustomViewCallback? = null
+    private var fullscreenPreviousUiVisibility: Int? = null
+    private var fullscreenPreviousWindowFlag = false
+    private var immersivePreviousUiVisibility: Int? = null
+    private var platformBackCallback: Any? = null
     private var isPlaying = false
     private var scanGeneration = 0
 
@@ -47,6 +64,20 @@ class MainActivity : Activity() {
 
         content = FrameLayout(this)
         setContentView(content)
+        content.setOnApplyWindowInsetsListener { _, insets ->
+            val safeInsets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+                )
+            } else {
+                null
+            }
+            val leftInset = safeInsets?.left ?: insets.systemWindowInsetLeft
+            val topInset = safeInsets?.top ?: insets.systemWindowInsetTop
+            val rightInset = safeInsets?.right ?: insets.systemWindowInsetRight
+            updatePlayerControlInsets(leftInset, topInset, rightInset)
+            insets
+        }
 
         worker = Executors.newSingleThreadExecutor()
         gamesDirectory = File(filesDir, "games")
@@ -55,12 +86,18 @@ class MainActivity : Activity() {
         cleanInterruptedImports()
 
         pathHandler = GamePathHandler(contentResolver)
+        registerPlatformBackCallback()
         showHome()
     }
 
     private fun showHome(message: String? = null) {
+        hideWebFullscreen(notifyPage = false)
+        exitImmersiveFullscreen()
         isPlaying = false
+        controlsExpanded = false
         developerConsoleButton = null
+        playerControlsButton = null
+        playerControlsPanel = null
         content.removeAllViews()
 
         val page = LinearLayout(this).apply {
@@ -652,7 +689,18 @@ class MainActivity : Activity() {
                 @Suppress("DEPRECATION")
                 allowUniversalAccessFromFileURLs = false
             }
-            view.webChromeClient = WebChromeClient()
+            view.webChromeClient = object : WebChromeClient() {
+                override fun onShowCustomView(
+                    view: View,
+                    callback: WebChromeClient.CustomViewCallback
+                ) {
+                    showWebFullscreen(view, callback)
+                }
+
+                override fun onHideCustomView() {
+                    hideWebFullscreen(notifyPage = false)
+                }
+            }
             view.setBackgroundColor(Color.BLACK)
             webView = view
         }
@@ -661,6 +709,11 @@ class MainActivity : Activity() {
             assetLoader = assetLoader,
             gamePathHandler = pathHandler,
             assetHost = assetHost,
+            onPageStarted = {
+                mainHandler.post {
+                    if (webView === player) developerConsoleButton?.isEnabled = false
+                }
+            },
             onPageFinished = {
                 mainHandler.post {
                     if (webView === player) developerConsoleButton?.isEnabled = true
@@ -687,39 +740,80 @@ class MainActivity : Activity() {
             )
         )
 
-        val consoleButton = Button(this).apply {
-            text = getString(R.string.developer_console)
-            contentDescription = getString(R.string.developer_console_description)
-            isAllCaps = false
-            isEnabled = false
-            elevation = dp(8).toFloat()
-            setOnClickListener {
-                player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT, null)
+        createPlayerControls(player)
+    }
+
+    private fun handleBackNavigation() {
+        when (
+            PlayerBackResolver.resolve(
+                PlayerBackState(
+                    controlsExpanded = controlsExpanded,
+                    webFullscreen = fullscreenCustomView != null,
+                    immersiveFullscreen = isImmersiveFullscreen,
+                    canNavigateBack = webView?.canGoBack() == true,
+                    isPlaying = isPlaying
+                )
+            )
+        ) {
+            PlayerBackAction.CLOSE_CONTROLS -> setPlayerControlsExpanded(false)
+            PlayerBackAction.EXIT_WEB_FULLSCREEN -> hideWebFullscreen(notifyPage = true)
+            PlayerBackAction.EXIT_IMMERSIVE_FULLSCREEN -> exitImmersiveFullscreen()
+            PlayerBackAction.NAVIGATE_GAME_HISTORY -> webView?.goBack()
+            PlayerBackAction.RETURN_TO_LIBRARY -> returnToLibrary()
+            PlayerBackAction.EXIT_ACTIVITY -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (!moveTaskToBack(true)) finish()
+                } else {
+                    @Suppress("DEPRECATION")
+                    super.onBackPressed()
+                }
             }
         }
-        developerConsoleButton = consoleButton
-        content.addView(
-            consoleButton,
-            FrameLayout.LayoutParams(dp(80), dp(46), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(12)
-                marginEnd = dp(12)
-            }
-        )
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        val currentWebView = webView
-        if (isPlaying && currentWebView?.canGoBack() == true) {
-            currentWebView.goBack()
-        } else if (isPlaying) {
-            showHome()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            handleBackNavigation()
         } else {
             super.onBackPressed()
         }
     }
 
+    private fun registerPlatformBackCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = OnBackInvokedCallback { handleBackNavigation() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                callback
+            )
+            platformBackCallback = callback
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        content.requestLayout()
+        webView?.apply {
+            requestLayout()
+            invalidate()
+        }
+        if (isImmersiveFullscreen || fullscreenCustomView != null) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = immersiveSystemUiFlags()
+        }
+        content.requestApplyInsets()
+    }
+
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            (platformBackCallback as? OnBackInvokedCallback)?.let {
+                onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it)
+            }
+        }
+        platformBackCallback = null
+        hideWebFullscreen(notifyPage = false)
+        exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
         webView?.apply {
             stopLoading()
@@ -728,7 +822,215 @@ class MainActivity : Activity() {
         }
         webView = null
         developerConsoleButton = null
+        playerControlsButton = null
+        playerControlsPanel = null
         super.onDestroy()
+    }
+
+    private fun createPlayerControls(player: WebView) {
+        val controlsButton = Button(this).apply {
+            text = getString(R.string.player_controls)
+            contentDescription = getString(R.string.player_controls_description)
+            isAllCaps = false
+            elevation = dp(8).toFloat()
+            setOnClickListener { setPlayerControlsExpanded(!controlsExpanded) }
+        }
+        playerControlsButton = controlsButton
+        content.addView(
+            controlsButton,
+            FrameLayout.LayoutParams(dp(112), dp(46), Gravity.TOP or Gravity.START).apply {
+                topMargin = dp(12)
+                marginStart = dp(12)
+            }
+        )
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.argb(238, 24, 26, 31))
+            elevation = dp(12).toFloat()
+            visibility = View.GONE
+        }
+
+        fun addAction(label: Int, action: () -> Unit): Button {
+            val button = Button(this).apply {
+                text = getString(label)
+                isAllCaps = false
+                textSize = 13f
+                minHeight = dp(44)
+                setOnClickListener { action() }
+            }
+            panel.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(46)
+                ).apply {
+                    bottomMargin = dp(4)
+                }
+            )
+            return button
+        }
+
+        addAction(R.string.return_to_library) { returnToLibrary() }
+        addAction(R.string.reload_game) {
+            setPlayerControlsExpanded(false)
+            developerConsoleButton?.isEnabled = false
+            player.reload()
+        }
+        addAction(R.string.toggle_fullscreen) { enterImmersiveFullscreen() }
+
+        developerConsoleButton = addAction(R.string.developer_console) {
+            player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT, null)
+        }.apply {
+            contentDescription = getString(R.string.developer_console_description)
+            isEnabled = false
+        }
+
+        addAction(R.string.close_controls) { setPlayerControlsExpanded(false) }
+
+        playerControlsPanel = panel
+        content.addView(
+            panel,
+            FrameLayout.LayoutParams(dp(164), ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.TOP or Gravity.START
+                topMargin = dp(64)
+                marginStart = dp(12)
+            }
+        )
+        content.requestApplyInsets()
+    }
+
+    private fun updatePlayerControlInsets(leftInset: Int, topInset: Int, rightInset: Int) {
+        val startInset = if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            rightInset
+        } else {
+            leftInset
+        }
+        playerControlsButton?.let { button ->
+            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.topMargin = dp(12) + topInset
+                params.marginStart = dp(12) + startInset
+                button.layoutParams = params
+            }
+        }
+        playerControlsPanel?.let { panel ->
+            (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.topMargin = dp(64) + topInset
+                params.marginStart = dp(12) + startInset
+                panel.layoutParams = params
+            }
+        }
+    }
+
+    private fun setPlayerControlsExpanded(expanded: Boolean) {
+        controlsExpanded = expanded
+        playerControlsPanel?.visibility = if (expanded) View.VISIBLE else View.GONE
+        playerControlsButton?.text = if (expanded) {
+            getString(R.string.player_controls) + " ▲"
+        } else {
+            getString(R.string.player_controls) + " ▼"
+        }
+    }
+
+    private fun returnToLibrary() {
+        hideWebFullscreen(notifyPage = true)
+        exitImmersiveFullscreen()
+        webView?.stopLoading()
+        showHome()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun enterImmersiveFullscreen() {
+        if (isImmersiveFullscreen || fullscreenCustomView != null) return
+        setPlayerControlsExpanded(false)
+        immersivePreviousUiVisibility = window.decorView.systemUiVisibility
+        isImmersiveFullscreen = true
+        playerControlsButton?.visibility = View.GONE
+        window.decorView.systemUiVisibility = immersiveSystemUiFlags()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun exitImmersiveFullscreen() {
+        if (!isImmersiveFullscreen) return
+        isImmersiveFullscreen = false
+        immersivePreviousUiVisibility?.let {
+            window.decorView.systemUiVisibility = it
+        }
+        immersivePreviousUiVisibility = null
+        playerControlsButton?.visibility = if (isPlaying && fullscreenCustomView == null) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showWebFullscreen(
+        view: View,
+        callback: WebChromeClient.CustomViewCallback
+    ) {
+        if (fullscreenCustomView != null) {
+            callback.onCustomViewHidden()
+            return
+        }
+
+        setPlayerControlsExpanded(false)
+        playerControlsButton?.visibility = View.GONE
+
+        fullscreenPreviousUiVisibility = window.decorView.systemUiVisibility
+        fullscreenPreviousWindowFlag =
+            window.attributes.flags and WindowManager.LayoutParams.FLAG_FULLSCREEN != 0
+        fullscreenCustomView = view
+        fullscreenCustomViewCallback = callback
+
+        (view.parent as? ViewGroup)?.removeView(view)
+        content.addView(
+            view,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.decorView.systemUiVisibility = immersiveSystemUiFlags()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun hideWebFullscreen(notifyPage: Boolean) {
+        val view = fullscreenCustomView ?: return
+        val callback = fullscreenCustomViewCallback
+        fullscreenCustomView = null
+        fullscreenCustomViewCallback = null
+        (view.parent as? ViewGroup)?.removeView(view)
+
+        if (fullscreenPreviousWindowFlag) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
+        fullscreenPreviousWindowFlag = false
+        fullscreenPreviousUiVisibility?.let {
+            window.decorView.systemUiVisibility = it
+        }
+        fullscreenPreviousUiVisibility = null
+
+        playerControlsButton?.visibility = if (isPlaying && !isImmersiveFullscreen) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        if (notifyPage) callback?.onCustomViewHidden()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun immersiveSystemUiFlags(): Int {
+        return View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
     private fun matchWidthWrapContent() = LinearLayout.LayoutParams(

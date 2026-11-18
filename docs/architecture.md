@@ -40,6 +40,16 @@ Missing or invalid local paths return a 404 response rather than falling through
 
 Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
 
+## Playback controls and fullscreen
+
+The WebView is hosted in a root `FrameLayout` with a small always-visible Controls button and an initially collapsed native control panel. The panel provides Library, Reload, Fullscreen, Dev, and Close actions. Controls are transient so ordinary play is not obstructed.
+
+App immersive fullscreen hides system bars and the native player chrome; Back restores them. HTML fullscreen and fullscreen media are handled through `WebChromeClient.onShowCustomView` / `onHideCustomView`. The supplied custom view is added above the WebView and then removed when fullscreen ends, while the prior window fullscreen flag and system UI visibility are restored.
+
+Back priority is centralized in `PlayerBackResolver` and covered with JVM tests: collapse controls, exit WebView fullscreen, exit app immersive fullscreen, navigate WebView history, return to the library, then normal Activity behavior.
+
+The Activity handles orientation and related screen/keyboard configuration changes without recreation. On a change it requests layout and invalidates the existing WebView rather than reloading the game.
+
 ## Developer console
 
 An optional native **Dev** control injects the pinned Eruda bundle into the active game only when requested. The bundle is built into the APK and served through a reserved `/__pocket/` path on the current per-game origin. The route is handled by `WebViewAssetLoader.AssetsPathHandler` against the app's root asset directory, not by the user-selected game folder.
