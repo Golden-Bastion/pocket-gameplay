@@ -50,8 +50,9 @@ A first-run storage message is expected on a fresh profile. A persistence failur
 - [ ] Tap **Choose a local video file**. Android's system document picker should appear; select a supported local video and confirm it appears in the preview.
 - [ ] Seek within the selected video if its codec and WebView implementation support it.
 - [ ] Tap **Save fixture export file**. Android should ask for a destination. Save the file and confirm it exists at the chosen location.
-- [ ] Open the native **Controls → Dev** console. Confirm the button briefly shows **Loading…**, then **Hide Dev**, and that the Eruda panel is visibly open on the Console tool. Tap the native button again and confirm the panel closes and the button returns to **Dev**.
-- [ ] With the panel closed, confirm Eruda's floating entry button is still visible. Tap it to open the panel, then confirm the Eruda button can close it again.
+- [ ] Open the native **Controls → Dev** action. Confirm the button briefly shows **Loading…**, then **Dev Loaded**, and Eruda's floating entry button appears.
+- [ ] Tap Eruda's floating entry button. Confirm the panel opens using Eruda's default UI; use the same button to close it again.
+- [ ] Confirm the native Dev action does not attempt to show, hide, or otherwise control Eruda after initialization.
 - [ ] Confirm opening/closing the console does not reload or reset the game, and that Eruda is absent on a fresh launch until explicitly opened.
 - [ ] Confirm the Dev control remains disabled while the game page is loading and becomes available after the page finishes.
 - [ ] With airplane mode enabled, open Eruda for both an imported ZIP game and a folder-backed game. Both must use the bundled app asset rather than a CDN.
