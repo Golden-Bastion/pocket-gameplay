@@ -3,6 +3,7 @@ package io.github.rightward.pocketgameplay
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
 import android.database.Cursor
@@ -21,6 +22,8 @@ import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.Button
@@ -28,12 +31,20 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.IOException
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+private data class PendingGameDownload(
+    val sourceUri: Uri,
+    val fileName: String,
+    val mimeType: String
+)
 
 class MainActivity : Activity() {
     private lateinit var content: FrameLayout
@@ -56,6 +67,9 @@ class MainActivity : Activity() {
     private var fullscreenPreviousWindowFlag = false
     private var immersivePreviousUiVisibility: Int? = null
     private var platformBackCallback: Any? = null
+    private var pendingFileChooser: ValueCallback<Array<Uri>>? = null
+    private var pendingDownload: PendingGameDownload? = null
+    private var currentGameAssetHost: String? = null
     private var isPlaying = false
     private var scanGeneration = 0
 
@@ -91,6 +105,8 @@ class MainActivity : Activity() {
     }
 
     private fun showHome(message: String? = null) {
+        cancelPendingFileChooser()
+        currentGameAssetHost = null
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
         isPlaying = false
@@ -266,9 +282,19 @@ class MainActivity : Activity() {
     @Deprecated("Uses platform document pickers for broad Android compatibility.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK || data?.data == null) return
+        when (requestCode) {
+            REQUEST_GAME_FILE_PICKER -> {
+                finishGameFileChooser(resultCode, data)
+                return
+            }
+            REQUEST_GAME_DOWNLOAD -> {
+                finishGameDownload(resultCode, data)
+                return
+            }
+        }
 
-        val uri = data.data ?: return
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
         when (requestCode) {
             REQUEST_GAME_FOLDER -> acceptGameFolder(uri, data.flags)
             REQUEST_GAME_ARCHIVE -> importZipArchive(uri)
@@ -646,10 +672,12 @@ class MainActivity : Activity() {
     }
 
     private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint, originKey: String) {
+        cancelPendingFileChooser()
         webView?.stopLoading()
         pathHandler.setGameRoot(root)
 
         val assetHost = GameOrigin.domainFor(originKey)
+        currentGameAssetHost = assetHost
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain(assetHost)
             .addPathHandler("/game/", pathHandler)
@@ -700,9 +728,21 @@ class MainActivity : Activity() {
                 override fun onHideCustomView() {
                     hideWebFullscreen(notifyPage = false)
                 }
+
+                override fun onShowFileChooser(
+                    webView: WebView,
+                    filePathCallback: ValueCallback<Array<Uri>>,
+                    fileChooserParams: WebChromeClient.FileChooserParams
+                ): Boolean {
+                    return launchGameFileChooser(filePathCallback, fileChooserParams)
+                }
             }
             view.setBackgroundColor(Color.BLACK)
             webView = view
+        }
+
+        player.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
+            beginGameDownload(url, contentDisposition, mimeType)
         }
 
         player.webViewClient = OfflineGameWebViewClient(
@@ -812,6 +852,8 @@ class MainActivity : Activity() {
             }
         }
         platformBackCallback = null
+        cancelPendingFileChooser()
+        pendingDownload = null
         hideWebFullscreen(notifyPage = false)
         exitImmersiveFullscreen()
         if (::worker.isInitialized) worker.shutdownNow()
@@ -825,6 +867,167 @@ class MainActivity : Activity() {
         playerControlsButton = null
         playerControlsPanel = null
         super.onDestroy()
+    }
+
+    private fun launchGameFileChooser(
+        callback: ValueCallback<Array<Uri>>,
+        parameters: WebChromeClient.FileChooserParams
+    ): Boolean {
+        if (parameters.mode != WebChromeClient.FileChooserParams.MODE_OPEN &&
+            parameters.mode != WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        ) {
+            callback.onReceiveValue(null)
+            return true
+        }
+
+        cancelPendingFileChooser()
+        pendingFileChooser = callback
+
+        val acceptedTypes = parameters.acceptTypes
+            .flatMap { it.split(',') }
+            .map { it.trim().lowercase(Locale.ROOT) }
+            .filter { it.contains('/') && !it.startsWith('.') }
+            .distinct()
+
+        val multiple = parameters.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = if (acceptedTypes.size == 1) acceptedTypes.first() else "*/*"
+            if (acceptedTypes.size > 1) {
+                putExtra(Intent.EXTRA_MIME_TYPES, acceptedTypes.toTypedArray())
+            }
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        return try {
+            startActivityForResult(intent, REQUEST_GAME_FILE_PICKER)
+            true
+        } catch (_: Exception) {
+            pendingFileChooser = null
+            callback.onReceiveValue(null)
+            Toast.makeText(this, "No document picker is available.", Toast.LENGTH_SHORT).show()
+            true
+        }
+    }
+
+    private fun finishGameFileChooser(resultCode: Int, data: Intent?) {
+        val callback = pendingFileChooser ?: return
+        pendingFileChooser = null
+
+        if (resultCode != RESULT_OK || data == null) {
+            callback.onReceiveValue(null)
+            return
+        }
+
+        val selectedUris = mutableListOf<Uri>()
+        data.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                clip.getItemAt(index).uri?.let(selectedUris::add)
+            }
+        }
+        data.data?.let(selectedUris::add)
+
+        val readableUris = selectedUris.distinct().filter { uri ->
+            uri.scheme == "content" && runCatching {
+                contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } == true
+            }.getOrDefault(false)
+        }
+
+        callback.onReceiveValue(readableUris.takeIf { it.isNotEmpty() }?.toTypedArray())
+    }
+
+    private fun cancelPendingFileChooser() {
+        pendingFileChooser?.onReceiveValue(null)
+        pendingFileChooser = null
+    }
+
+    private fun beginGameDownload(url: String, contentDisposition: String?, mimeType: String?) {
+        val assetHost = currentGameAssetHost
+        if (assetHost == null) {
+            Toast.makeText(this, "No game is currently open.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val sourcePath = LocalGameDownloadPath.resolve(Uri.parse(url), assetHost)
+        if (sourcePath == null) {
+            Toast.makeText(
+                this,
+                "Only downloads of files inside the current game folder are supported.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val source = pathHandler.resolveDocument(sourcePath)
+        if (source == null) {
+            Toast.makeText(this, "The requested game file could not be found.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val guessedName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            .ifBlank { source.name ?: "download" }
+        val safeName = guessedName
+            .substringAfterLast('/')
+            .filter { it != '\\' && it != '\u0000' }
+            .take(120)
+            .ifBlank { "download" }
+        val safeMimeType = mimeType
+            ?.substringBefore(';')
+            ?.takeIf { it.contains('/') }
+            ?: GameAssetMimeTypes.forFileName(safeName)
+
+        pendingDownload = PendingGameDownload(source.uri, safeName, safeMimeType)
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = safeMimeType
+            putExtra(Intent.EXTRA_TITLE, safeName)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            startActivityForResult(intent, REQUEST_GAME_DOWNLOAD)
+        } catch (_: Exception) {
+            pendingDownload = null
+            Toast.makeText(this, "No location is available to save this file.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun finishGameDownload(resultCode: Int, data: Intent?) {
+        val download = pendingDownload
+        pendingDownload = null
+        val destinationUri = data?.data
+
+        if (resultCode != RESULT_OK || download == null || destinationUri == null) {
+            return
+        }
+        if (destinationUri.scheme != "content") {
+            Toast.makeText(this, "The selected save location is not supported.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        worker.execute {
+            try {
+                val input = contentResolver.openInputStream(download.sourceUri)
+                    ?: throw IOException("Could not read the selected game file.")
+                val output = contentResolver.openOutputStream(destinationUri, "w")
+                    ?: throw IOException("Could not open the selected save location.")
+
+                input.use { source ->
+                    output.use { target ->
+                        source.copyTo(target)
+                    }
+                }
+                mainHandler.post {
+                    Toast.makeText(this, "Saved " + download.fileName, Toast.LENGTH_SHORT).show()
+                }
+            } catch (exception: Exception) {
+                val message = exception.message ?: "The file could not be saved."
+                mainHandler.post {
+                    Toast.makeText(this, "Download failed: " + message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun createPlayerControls(player: WebView) {
@@ -1043,5 +1246,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_GAME_FOLDER = 41
         private const val REQUEST_GAME_ARCHIVE = 42
+        private const val REQUEST_GAME_FILE_PICKER = 43
+        private const val REQUEST_GAME_DOWNLOAD = 44
     }
 }
