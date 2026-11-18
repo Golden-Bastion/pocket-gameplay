@@ -37,7 +37,7 @@ Choose:
 - **build** to test and build a selected branch/ref and upload a short-lived debug APK artifact.
 - **release** to rebuild and publish an existing release tag. Supply the exact tag, such as `v0.2.0`.
 
-Manual releases use the same tag, main-branch ancestry, version, and signing checks as tag-push releases. They publish a GitHub Release for the selected existing tag; they do not create a new version tag.
+Start manual releases from the `main` branch workflow. They use the same tag, main-branch ancestry, version, and signing checks as tag-push releases. They publish a GitHub Release for the selected existing tag; they do not create a new version tag.
 
 ## One-time release signing setup
 
