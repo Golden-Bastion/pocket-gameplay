@@ -6,6 +6,10 @@ The library supports imported ZIP copies and folder-backed shortcuts. A card ide
 
 Search matches the game title and relative start-page path. Sorting is deterministic: alphabetical order compares titles case-insensitively and breaks ties by library ID; recently added sorts newest-first and then uses title and ID as stable tie-breakers. Search and sorting do not change a game's identity or files.
 
+Each game card shows a compact favicon thumbnail when its selected HTML page declares a local `rel=icon` or Apple touch icon. If no usable link is declared, the app checks for a conventional `favicon.ico` in the game root and then beside the selected page. The image is copied into Pocket Gameplay's private `game-icons` cache, keyed by the immutable library ID. It is available offline, survives display-title changes, and is refreshed when imported game files are replaced or a folder shortcut is reconnected. If no supported local image is found, the app mark remains as the fallback. Remote URLs and data URIs are ignored.
+
+The **Play** action remains directly on each compact card. Less frequent actions—ZIP replacement, folder reconnection, rename, details, save-data isolation/reset, and removal—are grouped under the vertical three-dot menu. When a game is unavailable, the primary action becomes **Reconnect** or **Update ZIP** as appropriate.
+
 Renaming edits only the display title. The immutable library ID, imported directory, selected folder URI, origin key, start page, and browser-profile name are left unchanged.
 
 ## Storage and recovery
