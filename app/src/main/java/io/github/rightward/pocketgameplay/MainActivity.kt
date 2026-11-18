@@ -293,7 +293,8 @@ class MainActivity : Activity() {
             .setItems(labels) { _, selected ->
                 saveFolderGame(root, entries[selected], treeUri, originKey)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Cancel") { _, _ -> releaseFolderGrantIfUnused(treeUri) }
+            .setOnCancelListener { releaseFolderGrantIfUnused(treeUri) }
             .show()
     }
 
@@ -540,18 +541,25 @@ class MainActivity : Activity() {
             it.storageType == LibraryStorageType.FOLDER && it.sourceUri == game.sourceUri
         }
 
-        if (!uriStillUsed) {
+        if (!uriStillUsed) releaseFolderGrantIfUnused(Uri.parse(game.sourceUri))
+        showHome()
+    }
+
+    private fun releaseFolderGrantIfUnused(treeUri: Uri) {
+        val stillUsed = runCatching { libraryStore.all() }.getOrNull()?.any {
+            it.storageType == LibraryStorageType.FOLDER && it.sourceUri == treeUri.toString()
+        } ?: true
+
+        if (!stillUsed) {
             try {
                 contentResolver.releasePersistableUriPermission(
-                    Uri.parse(game.sourceUri),
+                    treeUri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: SecurityException) {
                 // The permission may already have been revoked by Android or the user.
             }
         }
-
-        showHome()
     }
 
     private fun removeImportedGame(game: LibraryGame) {

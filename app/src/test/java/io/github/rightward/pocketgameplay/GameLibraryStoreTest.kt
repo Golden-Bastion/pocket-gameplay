@@ -56,15 +56,17 @@ class GameLibraryStoreTest {
     fun storesFolderReferencesInVersionTwoMetadata() {
         withTemporaryDirectory { directory ->
             val metadata = File(directory, "library.properties")
+            val folderUri = "content://provider/tree/folder"
+            val entryPoint = "Start Page.html"
             val folderGame = LibraryGame(
-                id = "folder-game",
+                id = FolderGameId.create(folderUri, entryPoint),
                 title = "My downloaded game",
                 directoryName = "",
                 rootPath = "",
-                entryPoint = "Start Page.html",
+                entryPoint = entryPoint,
                 importedAtEpochMillis = 1234L,
                 storageType = LibraryStorageType.FOLDER,
-                sourceUri = "content://provider/tree/folder"
+                sourceUri = folderUri
             )
 
             GameLibraryStore(metadata).add(folderGame)

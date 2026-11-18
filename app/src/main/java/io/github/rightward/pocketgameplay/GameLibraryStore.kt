@@ -36,6 +36,7 @@ class GameLibraryStore(private val metadataFile: File) {
 
     @Synchronized
     fun add(game: LibraryGame) {
+        validate(game)
         val games = readGames().filterNot { it.id == game.id } + game
         writeGames(games)
     }
@@ -82,7 +83,39 @@ class GameLibraryStore(private val metadataFile: File) {
                 storageType = properties.getProperty(prefix + "storageType")
                     ?: LibraryStorageType.IMPORTED,
                 sourceUri = properties.getProperty(prefix + "sourceUri", "")
-            )
+            ).also(::validate)
+        }
+    }
+
+    private fun validate(game: LibraryGame) {
+        if (game.id.isBlank() || game.title.isBlank() ||
+            RelativeGamePath.parse(game.entryPoint) == null
+        ) {
+            throw IOException("Game library metadata contains invalid required fields.")
+        }
+
+        when (game.storageType) {
+            LibraryStorageType.IMPORTED -> {
+                if (game.directoryName.isBlank() ||
+                    game.directoryName == "." ||
+                    game.directoryName == ".." ||
+                    File(game.directoryName).name != game.directoryName ||
+                    game.directoryName != game.id ||
+                    game.sourceUri.isNotEmpty()
+                ) {
+                    throw IOException("Imported game metadata contains an invalid storage path.")
+                }
+            }
+            LibraryStorageType.FOLDER -> {
+                if (game.directoryName.isNotEmpty() ||
+                    game.rootPath.isNotEmpty() ||
+                    !game.sourceUri.startsWith("content://") ||
+                    game.id != FolderGameId.create(game.sourceUri, game.entryPoint)
+                ) {
+                    throw IOException("Folder game metadata contains an invalid folder reference.")
+                }
+            }
+            else -> throw IOException("Game library metadata contains an unsupported storage type.")
         }
     }
 
