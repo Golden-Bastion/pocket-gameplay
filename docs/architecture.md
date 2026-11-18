@@ -39,3 +39,9 @@ Missing or invalid local paths return a 404 response rather than falling through
 - No JavaScript bridge exposes native app APIs to game code.
 
 Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
+
+## Library records
+
+The library can contain two storage types. Imported games point to an app-private extracted directory. Folder-backed games store a persisted Storage Access Framework tree URI and a relative HTML entry point; they never own or delete the original directory. The versioned metadata reader continues to interpret version-1 entries as imported games while version 2 adds storage type and source URI fields.
+
+Folder game IDs are deterministic for a tree URI plus entry point. Different entry points in the same folder are independent shortcuts. A persisted URI read grant is released only after the last library item using that tree URI is removed.
