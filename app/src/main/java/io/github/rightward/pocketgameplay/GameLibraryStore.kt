@@ -57,6 +57,7 @@ class GameLibraryStore(private val metadataFile: File) {
         metadataFile.inputStream().buffered().use { input -> properties.load(input) }
 
         val version = properties.getProperty(KEY_VERSION)?.toIntOrNull()
+            ?: throw IOException("Game library metadata is missing its version.")
         if (version !in MIN_SUPPORTED_VERSION..FORMAT_VERSION) {
             throw IOException("Unsupported game library metadata version.")
         }

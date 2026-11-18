@@ -270,15 +270,20 @@ class MainActivity : Activity() {
                 } else if (entries.isEmpty()) {
                     showHome("No .html or .htm files were found in that folder.")
                 } else {
-                    chooseFolderEntryPoint(root, entries, originKey)
+                    chooseFolderEntryPoint(root, entries, originKey, treeUri)
                 }
             }
         }
     }
 
-    private fun chooseFolderEntryPoint(root: DocumentFile, entries: List<HtmlEntryPoint>, originKey: String) {
+    private fun chooseFolderEntryPoint(
+        root: DocumentFile,
+        entries: List<HtmlEntryPoint>,
+        originKey: String,
+        treeUri: Uri
+    ) {
         if (entries.size == 1) {
-            openGame(root, entries.first(), originKey)
+            saveFolderGame(root, entries.first(), treeUri, originKey)
             return
         }
 
@@ -286,10 +291,36 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Choose the game's start page")
             .setItems(labels) { _, selected ->
-                openGame(root, entries[selected], originKey)
+                saveFolderGame(root, entries[selected], treeUri, originKey)
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun saveFolderGame(
+        root: DocumentFile,
+        entryPoint: HtmlEntryPoint,
+        treeUri: Uri,
+        originKey: String
+    ) {
+        try {
+            validateFolderEntryPoint(root, entryPoint.relativePath)
+            val uriValue = treeUri.toString()
+            val game = LibraryGame(
+                id = FolderGameId.create(uriValue, entryPoint.relativePath),
+                title = root.name?.takeIf { it.isNotBlank() } ?: "Folder game",
+                directoryName = "",
+                rootPath = "",
+                entryPoint = entryPoint.relativePath,
+                importedAtEpochMillis = System.currentTimeMillis(),
+                storageType = LibraryStorageType.FOLDER,
+                sourceUri = uriValue
+            )
+            libraryStore.add(game)
+            openGame(root, entryPoint, originKey)
+        } catch (exception: Exception) {
+            showHome("Could not save this folder game: " + (exception.message ?: "Unknown error."))
+        }
     }
 
     private fun importZipArchive(uri: Uri) {
@@ -388,10 +419,47 @@ class MainActivity : Activity() {
 
     private fun playLibraryGame(game: LibraryGame) {
         try {
-            val root = resolveGameRoot(game)
-            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
-        } catch (_: IOException) {
-            showHome("This imported game is missing or its saved paths are invalid. Remove it and import it again.")
+            when (game.storageType) {
+                LibraryStorageType.IMPORTED -> {
+                    val root = resolveGameRoot(game)
+                    openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint), game.id)
+                }
+                LibraryStorageType.FOLDER -> {
+                    val treeUri = Uri.parse(game.sourceUri)
+                    val hasReadGrant = contentResolver.persistedUriPermissions.any {
+                        it.uri == treeUri && it.isReadPermission
+                    }
+                    if (!hasReadGrant) {
+                        throw IOException("Android no longer grants access to this folder. Remove it and open the folder again.")
+                    }
+
+                    val root = DocumentFile.fromTreeUri(this, treeUri)
+                        ?: throw IOException("The selected folder is no longer available.")
+                    validateFolderEntryPoint(root, game.entryPoint)
+                    openGame(root, HtmlEntryPoint(game.entryPoint), GameOrigin.forFolderUri(game.sourceUri))
+                }
+                else -> throw IOException("This library item has an unsupported storage type.")
+            }
+        } catch (exception: IOException) {
+            showHome(exception.message ?: "This game is unavailable. Remove it and add it again.")
+        }
+    }
+
+    private fun validateFolderEntryPoint(root: DocumentFile, relativePath: String) {
+        val segments = RelativeGamePath.parse(relativePath)
+            ?: throw IOException("The saved HTML entry-point path is invalid.")
+        var document = root
+
+        for ((index, segment) in segments.withIndex()) {
+            document = document.findFile(segment)
+                ?: throw IOException("The saved HTML entry point could not be found.")
+            if (index < segments.lastIndex && !document.isDirectory) {
+                throw IOException("The saved HTML entry-point path is invalid.")
+            }
+        }
+
+        if (!document.isFile || !document.canRead()) {
+            throw IOException("The saved HTML entry point is unavailable.")
         }
     }
 
@@ -438,7 +506,13 @@ class MainActivity : Activity() {
     private fun confirmRemoveGame(game: LibraryGame) {
         AlertDialog.Builder(this)
             .setTitle("Remove " + game.title + "?")
-            .setMessage("This deletes the imported copy stored by Pocket Gameplay.")
+            .setMessage(
+                if (game.storageType == LibraryStorageType.FOLDER) {
+                    "This removes the library shortcut only. Your original folder and files will not be deleted."
+                } else {
+                    "This deletes the imported copy stored by Pocket Gameplay."
+                }
+            )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Remove") { _, _ -> removeLibraryGame(game) }
             .show()
@@ -446,33 +520,68 @@ class MainActivity : Activity() {
 
     private fun removeLibraryGame(game: LibraryGame) {
         try {
-            if (game.directoryName != game.id ||
-                game.directoryName.isBlank() ||
-                File(game.directoryName).name != game.directoryName
-            ) {
-                throw IOException("Invalid game storage identifier.")
-            }
-
-            val base = gamesDirectory.canonicalFile
-            val directory = File(base, game.directoryName).canonicalFile
-            if (!directory.path.startsWith(base.path + File.separator)) {
-                throw IOException("Invalid game storage path.")
-            }
-
-            libraryStore.remove(game.id)
-            if (directory.exists() && !directory.deleteRecursively()) {
-                showHome("The library item was removed, but some stored files could not be deleted.")
-            } else {
-                showHome()
+            when (game.storageType) {
+                LibraryStorageType.FOLDER -> removeFolderShortcut(game)
+                LibraryStorageType.IMPORTED -> removeImportedGame(game)
+                else -> throw IOException("Unsupported library item type.")
             }
         } catch (exception: IOException) {
-            showHome("Could not remove the imported game: " + (exception.message ?: "Invalid storage path."))
+            showHome("Could not remove this game: " + (exception.message ?: "Invalid storage path."))
+        }
+    }
+
+    private fun removeFolderShortcut(game: LibraryGame) {
+        if (game.sourceUri.isBlank()) {
+            throw IOException("The saved folder reference is missing.")
+        }
+
+        libraryStore.remove(game.id)
+        val uriStillUsed = libraryStore.all().any {
+            it.storageType == LibraryStorageType.FOLDER && it.sourceUri == game.sourceUri
+        }
+
+        if (!uriStillUsed) {
+            try {
+                contentResolver.releasePersistableUriPermission(
+                    Uri.parse(game.sourceUri),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+                // The permission may already have been revoked by Android or the user.
+            }
+        }
+
+        showHome()
+    }
+
+    private fun removeImportedGame(game: LibraryGame) {
+        if (game.directoryName != game.id ||
+            game.directoryName.isBlank() ||
+            File(game.directoryName).name != game.directoryName
+        ) {
+            throw IOException("Invalid game storage identifier.")
+        }
+
+        val base = gamesDirectory.canonicalFile
+        val directory = File(base, game.directoryName).canonicalFile
+        if (!directory.path.startsWith(base.path + File.separator)) {
+            throw IOException("Invalid game storage path.")
+        }
+
+        libraryStore.remove(game.id)
+        if (directory.exists() && !directory.deleteRecursively()) {
+            showHome("The library item was removed, but some stored files could not be deleted.")
+        } else {
+            showHome()
         }
     }
 
     private fun cleanInterruptedImports() {
         val storedIds = try {
-            libraryStore.all().map { it.directoryName }.toSet()
+            libraryStore.all()
+                .filter { it.storageType == LibraryStorageType.IMPORTED }
+                .map { it.directoryName }
+                .toSet()
         } catch (_: IOException) {
             null
         }
