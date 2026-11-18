@@ -2,16 +2,18 @@
 
 A lightweight Android app for playing locally stored HTML5 games.
 
-The first development slice focuses on opening a game directly from a selected folder. It discovers HTML entry points instead of assuming every game uses `index.html`, then serves the chosen file and its sibling assets through AndroidX WebKit.
+Pocket Gameplay opens games from a selected folder or imports a ZIP archive into a private on-device library. It discovers HTML entry points rather than assuming every game uses `index.html`, then serves the chosen file and its sibling assets through AndroidX WebKit.
 
 ## Current scope
 
 - Native Android application written in Kotlin.
-- User-selected game folders through Android's Storage Access Framework.
-- Recursive discovery of `.html` and `.htm` files, including non-standard entry-point names.
+- Open a game folder through Android's Storage Access Framework.
+- Import ZIP archives into app-private storage.
+- Recursive discovery of `.html` and `.htm` entry points, including non-standard filenames.
 - Explicit entry-point selection when multiple HTML files are found.
+- Persistent library for imported ZIP games, with play and remove actions.
 - Local resource loading with `WebViewAssetLoader`; no `file://` URLs.
-- ZIP import and a persistent game library are planned follow-up work.
+- ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
 
 ## Build
 
@@ -35,4 +37,4 @@ Games run inside the Android System WebView installed on the device. Compatibili
 
 ## Security model
 
-The app only reads files inside the folder explicitly selected by the user. WebView's direct file and content access remain disabled. Game resources are exposed through a custom `WebViewAssetLoader` path handler, with path validation at the folder boundary. The app intentionally has no general internet permission.
+The app only reads files inside a folder explicitly selected by the user or files extracted into its app-private directory. WebView's direct file and content access remain disabled. Game resources are exposed through a custom `WebViewAssetLoader.PathHandler`, with path validation at the folder boundary. ZIP archives are treated as untrusted input and extracted only into bounded, private staging directories. The app intentionally has no general internet permission.

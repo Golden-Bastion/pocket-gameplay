@@ -4,11 +4,13 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.database.Cursor
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
@@ -21,6 +23,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewAssetLoader
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -29,8 +33,11 @@ class MainActivity : Activity() {
     private lateinit var pathHandler: GamePathHandler
     private lateinit var assetLoader: WebViewAssetLoader
     private lateinit var worker: ExecutorService
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private lateinit var gamesDirectory: File
+    private lateinit var zipImporter: ZipGameImporter
+    private lateinit var libraryStore: GameLibraryStore
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private var isPlaying = false
     private var scanGeneration = 0
@@ -42,6 +49,11 @@ class MainActivity : Activity() {
         setContentView(content)
 
         worker = Executors.newSingleThreadExecutor()
+        gamesDirectory = File(filesDir, "games")
+        zipImporter = ZipGameImporter(gamesDirectory)
+        libraryStore = GameLibraryStore(File(filesDir, "library.properties"))
+        cleanInterruptedImports()
+
         pathHandler = GamePathHandler(contentResolver)
         assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/game/", pathHandler)
@@ -56,8 +68,8 @@ class MainActivity : Activity() {
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(28), dp(32), dp(28), dp(32))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(32), dp(24), dp(32))
             setBackgroundColor(Color.rgb(16, 17, 20))
         }
 
@@ -73,7 +85,7 @@ class MainActivity : Activity() {
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(28))
+            setPadding(0, dp(12), 0, dp(24))
         }, matchWidthWrapContent())
 
         page.addView(Button(this).apply {
@@ -82,22 +94,38 @@ class MainActivity : Activity() {
             setOnClickListener { chooseGameFolder() }
         }, matchWidthWrapContent())
 
+        page.addView(Button(this).apply {
+            text = getString(R.string.import_zip_game)
+            isAllCaps = false
+            setOnClickListener { chooseZipArchive() }
+        }, matchWidthWrapContent())
+
         if (!message.isNullOrBlank()) {
             page.addView(TextView(this).apply {
                 text = message
                 textSize = 14f
                 setTextColor(Color.LTGRAY)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(20), 0, 0)
+                setPadding(0, dp(20), 0, dp(4))
             }, matchWidthWrapContent())
         }
 
+        page.addView(TextView(this).apply {
+            text = getString(R.string.library_title)
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(28), 0, dp(12))
+        }, matchWidthWrapContent())
+
+        addLibraryItems(page)
+
         val scroll = ScrollView(this).apply {
+            isFillViewport = true
             addView(
                 page,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
         }
@@ -108,6 +136,74 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
+    }
+
+    private fun addLibraryItems(page: LinearLayout) {
+        val games = try {
+            libraryStore.all().sortedBy { it.title.lowercase() }
+        } catch (_: IOException) {
+            page.addView(TextView(this).apply {
+                text = getString(R.string.library_read_error)
+                setTextColor(Color.LTGRAY)
+                textSize = 14f
+            }, matchWidthWrapContent())
+            return
+        }
+
+        if (games.isEmpty()) {
+            page.addView(TextView(this).apply {
+                text = getString(R.string.library_empty)
+                setTextColor(Color.LTGRAY)
+                textSize = 14f
+            }, matchWidthWrapContent())
+            return
+        }
+
+        games.forEach { game ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                setBackgroundColor(Color.rgb(31, 33, 38))
+            }
+
+            card.addView(TextView(this).apply {
+                text = game.title
+                textSize = 17f
+                setTextColor(Color.WHITE)
+            }, matchWidthWrapContent())
+
+            card.addView(TextView(this).apply {
+                text = game.entryPoint
+                textSize = 12f
+                setTextColor(Color.LTGRAY)
+                setPadding(0, dp(4), 0, dp(8))
+            }, matchWidthWrapContent())
+
+            val actions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            actions.addView(Button(this).apply {
+                text = getString(R.string.play_game)
+                isAllCaps = false
+                setOnClickListener { playLibraryGame(game) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            actions.addView(Button(this).apply {
+                text = getString(R.string.remove_game)
+                isAllCaps = false
+                setOnClickListener { confirmRemoveGame(game) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+
+            card.addView(actions, matchWidthWrapContent())
+            page.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(10)
+                }
+            )
+        }
     }
 
     private fun chooseGameFolder() {
@@ -121,13 +217,32 @@ class MainActivity : Activity() {
         startActivityForResult(intent, REQUEST_GAME_FOLDER)
     }
 
-    @Deprecated("Uses the platform folder picker for broad Android compatibility.")
+    private fun chooseZipArchive() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
+            )
+        }
+        startActivityForResult(intent, REQUEST_GAME_ARCHIVE)
+    }
+
+    @Deprecated("Uses platform document pickers for broad Android compatibility.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_GAME_FOLDER || resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK || data?.data == null) return
 
-        val treeUri = data?.data ?: return
-        val readGrant = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val uri = data.data ?: return
+        when (requestCode) {
+            REQUEST_GAME_FOLDER -> acceptGameFolder(uri, data.flags)
+            REQUEST_GAME_ARCHIVE -> importZipArchive(uri)
+        }
+    }
+
+    private fun acceptGameFolder(treeUri: Uri, grantFlags: Int) {
+        val readGrant = grantFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION
         if (readGrant == 0) {
             showHome("Android did not grant read access to that folder.")
             return
@@ -152,20 +267,20 @@ class MainActivity : Activity() {
             val entries = root?.let(GameEntryPointScanner::scan).orEmpty()
 
             mainHandler.post {
-                if (generation != scanGeneration || isFinishing) return@post
+                if (generation != scanGeneration || isFinishing || isDestroyed) return@post
 
                 if (root == null) {
                     showHome("Android could not open that folder.")
                 } else if (entries.isEmpty()) {
                     showHome("No .html or .htm files were found in that folder.")
                 } else {
-                    chooseEntryPoint(root, entries)
+                    chooseFolderEntryPoint(root, entries)
                 }
             }
         }
     }
 
-    private fun chooseEntryPoint(root: DocumentFile, entries: List<HtmlEntryPoint>) {
+    private fun chooseFolderEntryPoint(root: DocumentFile, entries: List<HtmlEntryPoint>) {
         if (entries.size == 1) {
             openGame(root, entries.first())
             return
@@ -179,6 +294,200 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun importZipArchive(uri: Uri) {
+        val archiveName = displayNameFor(uri)
+        showHome("Importing " + archiveName + "…")
+
+        worker.execute {
+            var staged: StagedGame? = null
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Android could not open the selected archive.")
+                staged = zipImporter.extract(input, archiveName)
+
+                val root = File(staged.stagingDirectory, staged.rootPath)
+                val entries = GameEntryPointScanner.scan(DocumentFile.fromFile(root))
+                if (entries.isEmpty()) {
+                    throw IOException("The archive does not contain an HTML or HTM file.")
+                }
+
+                val completedStage = staged
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) {
+                        completedStage.cleanup()
+                    } else {
+                        chooseZipEntryPoint(completedStage, entries)
+                    }
+                }
+            } catch (exception: Exception) {
+                staged?.cleanup()
+                val reason = exception.message ?: "Unknown import error."
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed) showHome("Import failed: " + reason)
+                }
+            }
+        }
+    }
+
+    private fun displayNameFor(uri: Uri): String {
+        return try {
+            val cursor: Cursor? = contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )
+            cursor?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            } ?: uri.lastPathSegment.orEmpty().ifBlank { "Imported Game.zip" }
+        } catch (_: Exception) {
+            uri.lastPathSegment.orEmpty().ifBlank { "Imported Game.zip" }
+        }
+    }
+
+    private fun chooseZipEntryPoint(staged: StagedGame, entries: List<HtmlEntryPoint>) {
+        if (entries.size == 1) {
+            finishZipImport(staged, entries.first())
+            return
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Choose the game's start page")
+            .setItems(entries.map { it.relativePath }.toTypedArray()) { _, selected ->
+                finishZipImport(staged, entries[selected])
+            }
+            .setNegativeButton("Cancel") { _, _ -> staged.cleanup() }
+            .create()
+
+        dialog.setOnCancelListener { staged.cleanup() }
+        dialog.show()
+    }
+
+    private fun finishZipImport(staged: StagedGame, entryPoint: HtmlEntryPoint) {
+        var publishedDirectory: File? = null
+        try {
+            publishedDirectory = staged.publish(gamesDirectory)
+            val game = LibraryGame(
+                id = staged.id,
+                title = staged.displayName,
+                directoryName = staged.id,
+                rootPath = staged.rootPath,
+                entryPoint = entryPoint.relativePath,
+                importedAtEpochMillis = System.currentTimeMillis()
+            )
+            libraryStore.add(game)
+
+            val root = resolveGameRoot(game)
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint))
+        } catch (exception: Exception) {
+            runCatching { libraryStore.remove(staged.id) }
+            publishedDirectory?.deleteRecursively()
+            staged.cleanup()
+            showHome("Could not add the game to your library: " + (exception.message ?: "Unknown error."))
+        }
+    }
+
+    private fun playLibraryGame(game: LibraryGame) {
+        try {
+            val root = resolveGameRoot(game)
+            openGame(DocumentFile.fromFile(root), HtmlEntryPoint(game.entryPoint))
+        } catch (_: IOException) {
+            showHome("This imported game is missing or its saved paths are invalid. Remove it and import it again.")
+        }
+    }
+
+    private fun resolveGameRoot(game: LibraryGame): File {
+        if (game.directoryName.isBlank() ||
+            game.directoryName == "." ||
+            game.directoryName == ".." ||
+            File(game.directoryName).name != game.directoryName ||
+            game.directoryName != game.id
+        ) {
+            throw IOException("Invalid library storage directory.")
+        }
+
+        val base = gamesDirectory.canonicalFile
+        val container = File(base, game.directoryName).canonicalFile
+        if (!container.path.startsWith(base.path + File.separator) || !container.isDirectory) {
+            throw IOException("The imported game directory is unavailable.")
+        }
+
+        val root = if (game.rootPath.isBlank()) {
+            container
+        } else {
+            val segments = RelativeGamePath.parse(game.rootPath)
+                ?: throw IOException("Invalid game root path.")
+            segments.fold(container) { current, segment -> File(current, segment) }.canonicalFile
+        }
+
+        if ((root != container && !root.path.startsWith(container.path + File.separator)) ||
+            !root.isDirectory
+        ) {
+            throw IOException("The imported game root is unavailable.")
+        }
+
+        val entrySegments = RelativeGamePath.parse(game.entryPoint)
+            ?: throw IOException("Invalid game entry-point path.")
+        val entryFile = entrySegments.fold(root) { current, segment -> File(current, segment) }.canonicalFile
+        if (!entryFile.path.startsWith(root.path + File.separator) || !entryFile.isFile) {
+            throw IOException("The saved game entry point is unavailable.")
+        }
+
+        return root
+    }
+
+    private fun confirmRemoveGame(game: LibraryGame) {
+        AlertDialog.Builder(this)
+            .setTitle("Remove " + game.title + "?")
+            .setMessage("This deletes the imported copy stored by Pocket Gameplay.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Remove") { _, _ -> removeLibraryGame(game) }
+            .show()
+    }
+
+    private fun removeLibraryGame(game: LibraryGame) {
+        try {
+            if (game.directoryName != game.id ||
+                game.directoryName.isBlank() ||
+                File(game.directoryName).name != game.directoryName
+            ) {
+                throw IOException("Invalid game storage identifier.")
+            }
+
+            val base = gamesDirectory.canonicalFile
+            val directory = File(base, game.directoryName).canonicalFile
+            if (!directory.path.startsWith(base.path + File.separator)) {
+                throw IOException("Invalid game storage path.")
+            }
+
+            libraryStore.remove(game.id)
+            if (directory.exists() && !directory.deleteRecursively()) {
+                showHome("The library item was removed, but some stored files could not be deleted.")
+            } else {
+                showHome()
+            }
+        } catch (exception: IOException) {
+            showHome("Could not remove the imported game: " + (exception.message ?: "Invalid storage path."))
+        }
+    }
+
+    private fun cleanInterruptedImports() {
+        val storedIds = try {
+            libraryStore.all().map { it.directoryName }.toSet()
+        } catch (_: IOException) {
+            null
+        }
+
+        gamesDirectory.listFiles()?.forEach { directory ->
+            if (directory.name.startsWith(".staging-")) {
+                directory.deleteRecursively()
+            } else if (storedIds != null && directory.name !in storedIds) {
+                directory.deleteRecursively()
+            }
+        }
     }
 
     private fun openGame(root: DocumentFile, entryPoint: HtmlEntryPoint) {
@@ -272,5 +581,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_GAME_FOLDER = 41
+        private const val REQUEST_GAME_ARCHIVE = 42
     }
 }
