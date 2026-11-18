@@ -9,7 +9,7 @@ The Android package version is stored in `gradle.properties`:
 - `appVersionName` is the public `MAJOR.MINOR.PATCH` version.
 - `appVersionCode` is the Android integer version code used by normal debug builds.
 
-Before publishing a version, update `appVersionName` on `main`, commit that change, and create a tag that matches it. Release tags must use `vMAJOR.MINOR.PATCH`, for example `v0.2.0`. The tag must point to a commit contained in `main`, and the version in the tagged `gradle.properties` must match the tag.
+Before publishing a version, update both `appVersionName` and `appVersionCode` on `main`, commit those changes, and create a tag that matches them. Set `appVersionCode` to the value calculated by the formula below. Release tags must use `vMAJOR.MINOR.PATCH`, for example `v0.2.0`. The tag must point to a commit contained in `main`, and the version in the tagged `gradle.properties` must match the tag.
 
 Release version codes are calculated from the tag as:
 
@@ -17,7 +17,7 @@ Release version codes are calculated from the tag as:
 MAJOR * 1,000,000 + MINOR * 1,000 + PATCH
 ```
 
-This keeps version codes increasing when MINOR and PATCH are each between 0 and 999. The resulting code must be within Android's supported positive version-code range.
+This keeps version codes increasing when MINOR and PATCH are each between 0 and 999. The resulting code must be within Android's supported positive version-code range. The release workflow checks that both Gradle properties match the tag before signing the APK.
 
 To publish automatically after preparing the version on `main`:
 
@@ -64,7 +64,8 @@ Never commit the keystore to the repository. Add the following repository secret
 On Linux or macOS, create the base64 value with:
 
 ```sh
-base64 < pocket-gameplay-release.jks | tr -d '\n'```
+base64 < pocket-gameplay-release.jks | tr -d '\n'
+```
 
 On PowerShell, use:
 
