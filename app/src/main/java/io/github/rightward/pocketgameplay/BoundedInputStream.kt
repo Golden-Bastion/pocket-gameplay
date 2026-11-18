@@ -35,8 +35,27 @@ internal class BoundedInputStream(
 
     override fun skip(byteCount: Long): Long {
         if (byteCount <= 0 || remaining <= 0) return 0
-        val skipped = super.skip(minOf(byteCount, remaining))
-        remaining -= skipped
+
+        var toSkip = minOf(byteCount, remaining)
+        var skipped = 0L
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+
+        while (toSkip > 0) {
+            val count = read(buffer, 0, minOf(buffer.size.toLong(), toSkip).toInt())
+            when {
+                count > 0 -> {
+                    skipped += count
+                    toSkip -= count
+                }
+                count < 0 -> break
+                else -> {
+                    if (read() < 0) break
+                    skipped++
+                    toSkip--
+                }
+            }
+        }
+
         return skipped
     }
 
