@@ -59,7 +59,7 @@ Never commit the keystore to the repository. Add the following repository secret
 | `ANDROID_KEYSTORE_BASE64` | Base64-encoded contents of the keystore file |
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
 | `ANDROID_KEY_ALIAS` | Alias selected when creating the key |
-| `ANDROID_KEY_PASSWORD` | Password for that key |
+| `ANDROID_KEY_PASSWORD` | Optional. Set this only if the private key has a password different from the keystore password. If the key has no separate password, leave this secret unset; the workflow passes an empty value. |
 
 On Linux or macOS, create the base64 value with:
 
@@ -73,7 +73,7 @@ On PowerShell, use:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("pocket-gameplay-release.jks"))
 ```
 
-Copy the resulting base64 text directly into the GitHub secret. Do not paste the keystore or its passwords into issues, pull requests, workflow logs, or source files. The workflow checks for all four secrets and fails before building if any are missing.
+Copy the resulting base64 text directly into the GitHub secret. Do not paste the keystore or its passwords into issues, pull requests, workflow logs, or source files. The workflow requires the keystore file, keystore password, and key alias. The private-key password is optional; if `ANDROID_KEY_PASSWORD` is not configured, the signing task receives an empty string.
 
 **Keep the keystore and passwords permanently backed up.** Losing the signing key prevents future APKs from updating an already-installed official release. If the app has only been installed from CI debug artifacts, the first official release may require a one-time uninstall and reinstall because debug and release APKs use different signing identities; uninstalling removes Pocket Gameplay's private library and saves.
 
