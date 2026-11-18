@@ -64,7 +64,7 @@ jobs:
         with:
           gradle-version: "8.13"
           cache-provider: enhanced
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'build' && inputs.branch != 'main') }}
 
       # Eruda's verified npm tarball lives in app/build/downloads, outside
       # Gradle User Home, so restore it separately.
@@ -89,8 +89,14 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          WORKFLOW_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$WORKFLOW_REF" != "refs/heads/main" ]]; then
+            echo "::error::Run manual releases from the main branch workflow."
+            exit 1
+          fi
 
           if [[ -z "$RELEASE_TAG" ]]; then
             echo "::error::release_tag is required for the release operation."
