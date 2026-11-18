@@ -10,11 +10,15 @@ The developer console is served by the app's reserved `/__pocket/` asset route o
 
 The first build on a clean workspace needs network access to download the pinned npm package. Subsequent builds can reuse the verified archive in the local Gradle build directory.
 
+Debug and release APK verification tasks inspect the built archive and fail CI if `assets/eruda.js`, its MIT license, or the pinned version metadata are missing. This verifies that the bundle is actually packaged, not merely generated in the Gradle workspace.
+
 ## Player behavior
 
-The native **Dev** button is disabled until the game page finishes loading. Tapping it injects Eruda into the current page on demand. Eruda's own floating entry button is hidden so the native control remains the single entry point. Tapping **Dev** again hides or reopens the console without reloading the game.
+The native **Dev** button is disabled until the game page finishes loading. Tapping it injects Eruda into the current page on demand. While the local asset loads, the button changes to **Loading…** and remains disabled. Once open, it changes to **Hide Dev**; tapping it again hides the panel and restores **Dev**. None of these actions reloads the game.
 
-The configured tools include Console, Elements, Network, Resources, Sources, Info, and Snippets. The integration is idempotent within a page, so repeated taps do not add duplicate script elements or initialize multiple Eruda instances.
+The integration is idempotent within a page, so repeated taps do not add duplicate script elements or initialize multiple Eruda instances. The native player polls a small page-local status value while Eruda loads. Asset failures, initialization failures and timeouts now produce a visible Android Toast with a suggested next step instead of writing the only error message into the console the user is trying to open. No JavaScript bridge is added.
+
+The configured tools include Console, Elements, Network, Resources, Sources, Info, and Snippets. Eruda's own floating entry button is hidden so the native control remains the single entry point.
 
 ## Security and limitations
 
