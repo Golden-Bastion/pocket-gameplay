@@ -14,9 +14,9 @@ Debug and release APK verification tasks inspect the built archive and fail CI i
 
 ## Player behavior
 
-The native **Dev** button is disabled until the game page finishes loading. Tapping it injects the locally bundled Eruda script into the current page. The integration intentionally follows Eruda's documented bookmarklet sequence: append the script to `document.body`, then call `eruda.init()` with no custom options or additional API calls.
+The **Dev** item in the player toolbar's More menu is disabled until the game page finishes loading. Selecting it injects the locally bundled Eruda script into the current page. The integration intentionally follows Eruda's documented bookmarklet sequence: append the script to `document.body`, then call `eruda.init()` with no custom options or additional API calls.
 
-While the local asset loads, the button changes to **Loading…** and remains disabled. Once Eruda initializes, the native button changes to **Dev Loaded** and becomes disabled. Use Eruda's own floating entry button to open and close its panel and switch tools. Reloading the game resets the native control and allows Eruda to be loaded again.
+While the local asset loads, the menu item changes to **Loading…** and remains disabled. Once Eruda initializes, the menu item changes to **Dev Loaded** and becomes disabled. Use Eruda's own floating entry button to open and close its panel and switch tools. Reloading the game resets the native control and allows Eruda to be loaded again.
 
 The integration is idempotent within a page, so repeated taps do not add duplicate script elements or initialize multiple Eruda instances. The native player polls a small page-local status value while Eruda loads. Asset failures, initialization failures and timeouts produce a visible Android Toast with a suggested next step. No JavaScript bridge is added.
 
