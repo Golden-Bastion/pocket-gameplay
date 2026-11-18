@@ -55,7 +55,7 @@ class GamePathHandler(
             )
         }
 
-        val mimeType = GameAssetMimeTypes.forFileName(segments.last())
+        val mimeType = GameAssetMimeTypes.forFileName(path.substringAfterLast('/'))
         val encoding = if (GameAssetMimeTypes.isTextual(mimeType)) "UTF-8" else null
         val responseHeaders = linkedMapOf("Cache-Control" to "no-store")
         if (contentLength >= 0) responseHeaders["Accept-Ranges"] = "bytes"
