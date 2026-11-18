@@ -14,6 +14,8 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Persistent library for imported ZIP games and saved folder references, with search, A–Z/recent sorting, renaming, details, recovery actions, and explicit remove semantics.
 - Per-game WebView profiles and per-game data clearing on System WebView versions that support AndroidX WebKit multi-profile APIs; legacy saves can be explicitly isolated.
 - Persisted folder permissions allow reopening saved folder games after app restart; removing a folder entry never deletes source files.
+- Local game favicons are discovered from the selected HTML page and cached in app-private storage for offline library thumbnails.
+- Compact library cards keep Play visible and group secondary game actions in an overflow menu.
 - Local resource loading with `WebViewAssetLoader`; no `file://` URLs.
 - Separate local web origins for each game, isolating browser-managed storage such as `localStorage` and IndexedDB.
 - ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
