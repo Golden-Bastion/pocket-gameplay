@@ -40,6 +40,14 @@ Missing or invalid local paths return a 404 response rather than falling through
 
 Games are untrusted content. WebView provides the rendering/runtime environment, but games requiring unsupported APIs or desktop-only browser behavior may not work.
 
+## HTML5 runtime and media compatibility
+
+`GameAssetMimeTypes` maps common HTML5 assets, fonts, images, audio and video extensions to explicit MIME types. `GamePathHandler` supports `GET` and `HEAD`; valid single byte ranges return `206 Partial Content` with `Content-Range` and a bounded stream, while unsatisfiable ranges return `416`. Multiple or malformed ranges are ignored and served as full responses. If a storage provider cannot report a reliable size, byte ranges are not advertised for that resource.
+
+HTML file inputs are handled through Android's Storage Access Framework document picker. Only readable `content://` URIs selected by the user are returned to WebView, without persisting per-file grants. Local game-file downloads are handled through `ACTION_CREATE_DOCUMENT` and require the user to choose a save destination. External, `blob:`, and `data:` downloads are rejected rather than enabling network access or adding a JavaScript bridge.
+
+The manual fixture in `test-fixtures/html5-compatibility` exercises browser APIs and local media on an actual device. Device WebView version, codecs and hardware still determine final compatibility.
+
 ## Playback controls and fullscreen
 
 The WebView is hosted in a root `FrameLayout` with a small always-visible Controls button and an initially collapsed native control panel. The panel provides Library, Reload, Fullscreen, Dev, and Close actions. Controls are transient so ordinary play is not obstructed.
