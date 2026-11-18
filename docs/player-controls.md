@@ -24,6 +24,8 @@ This also covers WebView's HTML media fullscreen path, subject to the codecs and
 
 ## Back navigation priority
 
+Android 13 and newer use the platform `OnBackInvokedDispatcher` callback, with predictive Back enabled in the manifest. Android 12 and older use the legacy Activity callback. Both paths use the same resolver.
+
 Back is resolved in this order:
 
 1. Close an expanded native controls panel.
