@@ -52,10 +52,18 @@ async function runProbes() {
     }
 
     try {
-        localStorage.setItem("pocket-gameplay-fixture", "saved");
-        report("localStorage", localStorage.getItem("pocket-gameplay-fixture") === "saved");
+        const storageKey = "pocket-gameplay-fixture";
+        const previousValue = localStorage.getItem(storageKey);
+        localStorage.setItem(storageKey, "saved");
+        report(
+            "localStorage persistence",
+            localStorage.getItem(storageKey) === "saved",
+            previousValue === "saved"
+                ? "a value from an earlier page load was retained"
+                : "first load; reload the game to verify persistence"
+        );
     } catch (error) {
-        report("localStorage", false, String(error));
+        report("localStorage persistence", false, String(error));
     }
 
     try {
@@ -64,19 +72,32 @@ async function runProbes() {
             request.onupgradeneeded = () => request.result.createObjectStore("checks");
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
+            request.onblocked = () => reject(new Error("IndexedDB upgrade was blocked"));
         });
-        const readBack = await new Promise((resolve, reject) => {
-            const transaction = database.transaction("checks", "readwrite");
-            const store = transaction.objectStore("checks");
-            store.put("saved", "probe");
-            const request = store.get("probe");
+        const previousValue = await new Promise((resolve, reject) => {
+            const transaction = database.transaction("checks", "readonly");
+            const request = transaction.objectStore("checks").get("probe");
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
+            transaction.onabort = () => reject(transaction.error || new Error("IndexedDB read aborted"));
+        });
+        await new Promise((resolve, reject) => {
+            const transaction = database.transaction("checks", "readwrite");
+            transaction.objectStore("checks").put("saved", "probe");
+            transaction.oncomplete = resolve;
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error || new Error("IndexedDB write aborted"));
         });
         database.close();
-        report("IndexedDB", readBack === "saved");
+        report(
+            "IndexedDB persistence",
+            true,
+            previousValue === "saved"
+                ? "a value from an earlier page load was retained"
+                : "first load; reload the game to verify persistence"
+        );
     } catch (error) {
-        report("IndexedDB", false, String(error));
+        report("IndexedDB persistence", false, String(error));
     }
 }
 
