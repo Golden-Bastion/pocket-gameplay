@@ -17,6 +17,16 @@ The Java ZIP APIs used here do not create symbolic links from archive metadata; 
 
 If the archive contains exactly one top-level directory, that directory is treated as the game's effective root. Its structure remains intact, and the chosen HTML entry point is stored relative to that root. This preserves the expected behavior of paths such as `assets/sprite.png` and root-relative `/assets/sprite.png`.
 
+## Updating an existing imported game
+
+Every imported-game library card offers **Update ZIP**, including entries whose current files are healthy. The update is initiated from that specific card; the app does not match an archive to a game by filename. Folder-backed shortcuts do not offer this action.
+
+The replacement archive goes through the same staging directory, path validation, extraction limits and HTML entry-point scan as a first import. If the archive has multiple HTML/HTM pages, the user chooses the new start page. Cancelling the picker or entry-point chooser, or rejecting an invalid archive, leaves the current game directory untouched.
+
+After selection, the app moves the old content directory to a per-game backup, publishes the staged content under the existing directory name, and then atomically updates the library record. Only the root directory path and selected entry-point path change. The library ID, display title, import timestamp, origin key and browser profile remain unchanged, so the existing browser-managed saves stay associated with the game. The replacement does not create another library item.
+
+The previous directory is deleted only after the new directory and metadata have been committed. If the swap or metadata update fails, the app removes the incomplete replacement and restores the backup where possible. Startup recovery checks leftover backups: a valid current directory wins; otherwise the newest backup is restored. A backup that cannot be safely moved is retained rather than discarded.
+
 ## Library metadata
 
 The library registry is a small versioned properties file, written to a temporary sibling file and atomically replaced where supported. Extracted game files remain separate from metadata. The registry stores only identifiers and relative paths; stored paths are validated again before a game is launched or removed.
