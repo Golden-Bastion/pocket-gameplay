@@ -38,6 +38,7 @@ class MainActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
+    private var developerConsoleButton: Button? = null
     private var isPlaying = false
     private var scanGeneration = 0
 
@@ -59,6 +60,7 @@ class MainActivity : Activity() {
 
     private fun showHome(message: String? = null) {
         isPlaying = false
+        developerConsoleButton = null
         content.removeAllViews()
 
         val page = LinearLayout(this).apply {
@@ -614,6 +616,10 @@ class MainActivity : Activity() {
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain(assetHost)
             .addPathHandler("/game/", pathHandler)
+            .addPathHandler(
+                DeveloperConsole.ASSET_PATH_PREFIX,
+                WebViewAssetLoader.AssetsPathHandler(this)
+            )
             .build()
         showPlayer(assetLoader, assetHost)
 
@@ -651,16 +657,26 @@ class MainActivity : Activity() {
             webView = view
         }
 
-        player.webViewClient = OfflineGameWebViewClient(assetLoader, pathHandler, assetHost) {
-            mainHandler.post {
-                webView?.let { crashed ->
-                    (crashed.parent as? ViewGroup)?.removeView(crashed)
-                    crashed.destroy()
+        player.webViewClient = OfflineGameWebViewClient(
+            assetLoader = assetLoader,
+            gamePathHandler = pathHandler,
+            assetHost = assetHost,
+            onPageFinished = {
+                mainHandler.post {
+                    if (webView === player) developerConsoleButton?.isEnabled = true
                 }
-                webView = null
-                showHome("The game renderer stopped unexpectedly.")
+            },
+            onRendererGone = {
+                mainHandler.post {
+                    webView?.let { crashed ->
+                        (crashed.parent as? ViewGroup)?.removeView(crashed)
+                        crashed.destroy()
+                    }
+                    webView = null
+                    showHome("The game renderer stopped unexpectedly.")
+                }
             }
-        }
+        )
 
         (player.parent as? ViewGroup)?.removeView(player)
         content.addView(
@@ -669,6 +685,25 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+        )
+
+        val consoleButton = Button(this).apply {
+            text = getString(R.string.developer_console)
+            contentDescription = getString(R.string.developer_console_description)
+            isAllCaps = false
+            isEnabled = false
+            elevation = dp(8).toFloat()
+            setOnClickListener {
+                player.evaluateJavascript(DeveloperConsole.TOGGLE_SCRIPT, null)
+            }
+        }
+        developerConsoleButton = consoleButton
+        content.addView(
+            consoleButton,
+            FrameLayout.LayoutParams(dp(80), dp(46), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(12)
+                marginEnd = dp(12)
+            }
         )
     }
 
@@ -692,6 +727,7 @@ class MainActivity : Activity() {
             destroy()
         }
         webView = null
+        developerConsoleButton = null
         super.onDestroy()
     }
 

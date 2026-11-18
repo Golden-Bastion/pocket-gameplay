@@ -8,4 +8,6 @@
     <string name="play_game">Play</string>
     <string name="remove_game">Remove</string>
     <string name="folder_picker_title">Select a folder containing an HTML5 game</string>
+    <string name="developer_console">Dev</string>
+    <string name="developer_console_description">Open or close the game developer console</string>
 </resources>
