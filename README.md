@@ -53,4 +53,4 @@ Games run inside the Android System WebView installed on the device. Compatibili
 
 ## Security model
 
-The app only reads files inside a folder explicitly selected by the user or files extracted into its app-private directory. WebView's direct file and content access remain disabled. Game resources are exposed through a custom `WebViewAssetLoader.PathHandler`, with path validation at the folder boundary. ZIP archives are treated as untrusted input and extracted only into bounded, private staging directories. The app intentionally has no general internet permission.
+The app only reads files inside a folder explicitly selected by the user or files extracted into its app-private directory. WebView's direct file and content access remain disabled. Game resources are served by a request-aware local file handler with path validation at the folder boundary. App-owned developer assets use `WebViewAssetLoader`. ZIP archives are treated as untrusted input and extracted only into bounded, private staging directories. The app intentionally has no general internet permission.
