@@ -1399,7 +1399,7 @@ class MainActivity : Activity() {
             elevation = dp(4).toFloat()
             setPaddingRelative(dp(8), dp(4), dp(8), dp(4))
         }
-        val viewport = FrameLayout(this).apply {
+        val viewportFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
         }
         playerRoot.addView(
@@ -1410,7 +1410,7 @@ class MainActivity : Activity() {
             )
         )
         playerRoot.addView(
-            viewport,
+            viewportFrame,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -1425,7 +1425,7 @@ class MainActivity : Activity() {
             )
         )
         playerToolbar = toolbar
-        playerViewport = viewport
+        playerViewport = viewportFrame
 
         val selectedProfile = profileName.takeIf {
             it.isNotBlank() && supportsPerGameProfiles()
