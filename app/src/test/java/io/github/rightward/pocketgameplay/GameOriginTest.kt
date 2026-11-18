@@ -18,10 +18,11 @@ class GameOriginTest {
     }
 
     @Test
-    fun folderUriProducesStableOriginKey() {
-        assertEquals(
-            GameOrigin.forFolderUri("content://provider/tree/primary%3ADownloads%2Fgame"),
-            GameOrigin.forFolderUri("content://provider/tree/primary%3ADownloads%2Fgame")
-        )
+    fun folderUrisProduceStableDistinctOriginKeys() {
+        val firstUri = "content://provider/tree/primary%3ADownloads%2Fgame-a"
+        val secondUri = "content://provider/tree/primary%3ADownloads%2Fgame-b"
+
+        assertEquals(GameOrigin.forFolderUri(firstUri), GameOrigin.forFolderUri(firstUri))
+        assertNotEquals(GameOrigin.forFolderUri(firstUri), GameOrigin.forFolderUri(secondUri))
     }
 }

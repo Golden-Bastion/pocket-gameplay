@@ -13,6 +13,7 @@ Pocket Gameplay opens games from a selected folder or imports a ZIP archive into
 - Explicit entry-point selection when multiple HTML files are found.
 - Persistent library for imported ZIP games, with play and remove actions.
 - Local resource loading with `WebViewAssetLoader`; no `file://` URLs.
+- Separate local web origins for each game, isolating browser-managed storage such as `localStorage` and IndexedDB.
 - ZIP extraction safeguards for traversal, duplicate paths, and uncompressed size limits.
 
 ## Build
