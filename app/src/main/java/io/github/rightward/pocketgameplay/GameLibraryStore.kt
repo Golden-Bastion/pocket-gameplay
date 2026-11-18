@@ -1,0 +1,136 @@
+package io.github.rightward.pocketgameplay
+
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.Properties
+
+data class LibraryGame(
+    val id: String,
+    val title: String,
+    val directoryName: String,
+    val rootPath: String,
+    val entryPoint: String,
+    val importedAtEpochMillis: Long
+)
+
+/**
+ * Small file-backed registry for imported games.
+ *
+ * Game content itself lives in a separate app-private directory. The registry only stores
+ * stable identifiers and relative paths; callers must still validate those paths before use.
+ */
+class GameLibraryStore(private val metadataFile: File) {
+    @Synchronized
+    fun all(): List<LibraryGame> = readGames()
+
+    @Synchronized
+    fun add(game: LibraryGame) {
+        val games = readGames().filterNot { it.id == game.id } + game
+        writeGames(games)
+    }
+
+    @Synchronized
+    fun remove(id: String): Boolean {
+        val games = readGames()
+        val remaining = games.filterNot { it.id == id }
+        if (remaining.size == games.size) return false
+
+        writeGames(remaining)
+        return true
+    }
+
+    private fun readGames(): List<LibraryGame> {
+        if (!metadataFile.exists()) return emptyList()
+
+        val properties = Properties()
+        metadataFile.inputStream().buffered().use(properties::load)
+
+        val version = properties.getProperty(KEY_VERSION)?.toIntOrNull()
+        if (version != FORMAT_VERSION) {
+            throw IOException("Unsupported game library metadata version.")
+        }
+
+        val count = properties.getProperty(KEY_COUNT)?.toIntOrNull()
+            ?: throw IOException("Game library metadata is missing its item count.")
+        if (count !in 0..MAX_LIBRARY_ITEMS) {
+            throw IOException("Game library metadata contains an invalid item count.")
+        }
+
+        return (0 until count).map { index ->
+            val prefix = "game.$index."
+            LibraryGame(
+                id = required(properties, prefix + "id"),
+                title = required(properties, prefix + "title"),
+                directoryName = required(properties, prefix + "directory"),
+                rootPath = properties.getProperty(prefix + "root", ""),
+                entryPoint = required(properties, prefix + "entry"),
+                importedAtEpochMillis = properties.getProperty(prefix + "importedAt")
+                    ?.toLongOrNull()
+                    ?: throw IOException("Game library metadata contains an invalid import time.")
+            )
+        }
+    }
+
+    private fun writeGames(games: List<LibraryGame>) {
+        if (games.size > MAX_LIBRARY_ITEMS) {
+            throw IOException("The game library has reached its item limit.")
+        }
+
+        val parent = metadataFile.absoluteFile.parentFile
+            ?: throw IOException("The game library metadata path has no parent directory.")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IOException("Could not create the game library metadata directory.")
+        }
+
+        val properties = Properties().apply {
+            setProperty(KEY_VERSION, FORMAT_VERSION.toString())
+            setProperty(KEY_COUNT, games.size.toString())
+            games.forEachIndexed { index, game ->
+                val prefix = "game.$index."
+                setProperty(prefix + "id", game.id)
+                setProperty(prefix + "title", game.title)
+                setProperty(prefix + "directory", game.directoryName)
+                setProperty(prefix + "root", game.rootPath)
+                setProperty(prefix + "entry", game.entryPoint)
+                setProperty(prefix + "importedAt", game.importedAtEpochMillis.toString())
+            }
+        }
+
+        val temporaryFile = File(parent, metadataFile.name + ".tmp")
+        FileOutputStream(temporaryFile).use { output ->
+            properties.store(output, "Pocket Gameplay library")
+            output.fd.sync()
+        }
+
+        try {
+            Files.move(
+                temporaryFile.toPath(),
+                metadataFile.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(
+                temporaryFile.toPath(),
+                metadataFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+            )
+        }
+    }
+
+    private fun required(properties: Properties, key: String): String {
+        return properties.getProperty(key)
+            ?: throw IOException("Game library metadata is missing a required field.")
+    }
+
+    companion object {
+        private const val KEY_VERSION = "version"
+        private const val KEY_COUNT = "count"
+        private const val FORMAT_VERSION = 1
+        private const val MAX_LIBRARY_ITEMS = 10_000
+    }
+}
