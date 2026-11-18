@@ -883,11 +883,7 @@ class MainActivity : Activity() {
         cancelPendingFileChooser()
         pendingFileChooser = callback
 
-        val acceptedTypes = parameters.acceptTypes
-            .flatMap { it.split(',') }
-            .map { it.trim().lowercase(Locale.ROOT) }
-            .filter { it.contains('/') && !it.startsWith('.') }
-            .distinct()
+        val acceptedTypes = GameFileAcceptTypes.normalize(parameters.acceptTypes.toList())
 
         val multiple = parameters.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -930,7 +926,7 @@ class MainActivity : Activity() {
 
         val readableUris = selectedUris.distinct().filter { uri ->
             uri.scheme == "content" && runCatching {
-                contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } == true
+                contentResolver.openInputStream(uri)?.use { true } == true
             }.getOrDefault(false)
         }
 
@@ -980,10 +976,11 @@ class MainActivity : Activity() {
             .take(120)
             .takeIf { it.isNotBlank() && it != "." && it != ".." }
             ?: "download"
-        val safeMimeType = mimeType
-            ?.substringBefore(';')
-            ?.takeIf { it.contains('/') }
-            ?: GameAssetMimeTypes.forFileName(safeName)
+        val candidateMimeType = mimeType?.substringBefore(';')?.trim()
+        val safeMimeType = candidateMimeType?.takeIf { candidate ->
+            candidate.count { it == '/' } == 1 &&
+                candidate.none { it.isWhitespace() || it == '\\r' || it == '\\n' }
+        } ?: GameAssetMimeTypes.forFileName(safeName)
 
         pendingDownload = PendingGameDownload(source.uri, safeName)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
