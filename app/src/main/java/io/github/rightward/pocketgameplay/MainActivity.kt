@@ -616,6 +616,10 @@ class MainActivity : Activity() {
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain(assetHost)
             .addPathHandler("/game/", pathHandler)
+            .addPathHandler(
+                DeveloperConsole.ASSET_PATH_PREFIX,
+                WebViewAssetLoader.AssetsPathHandler(this, "developer/")
+            )
             .build()
         showPlayer(assetLoader, assetHost)
 
