@@ -1,5 +1,11 @@
 <resources>
     <string name="app_name">Pocket Gameplay</string>
-    <string name="choose_game_folder">Choose game folder</string>
+    <string name="choose_game_folder">Open game folder</string>
+    <string name="import_zip_game">Import ZIP game</string>
+    <string name="library_title">Your library</string>
+    <string name="library_empty">No imported games yet.</string>
+    <string name="library_read_error">The saved library could not be read.</string>
+    <string name="play_game">Play</string>
+    <string name="remove_game">Remove</string>
     <string name="folder_picker_title">Select a folder containing an HTML5 game</string>
 </resources>

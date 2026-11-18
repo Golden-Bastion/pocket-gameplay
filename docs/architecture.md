@@ -23,7 +23,9 @@ A custom AndroidX `WebViewAssetLoader.PathHandler` resolves URL path segments be
 <img src="assets/player.png">
 ```
 
-The selected entry point is loaded from `https://appassets.androidplatform.net/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
+Each game is loaded from a distinct HTTPS-style host generated beneath the reserved `appassets.androidplatform.net` domain, with `WebViewAssetLoader.Builder.setDomain`. The origin key is stable for an imported game and deterministically derived from a selected folder's Storage Access Framework URI. This keeps browser-managed origin storage isolated between games.
+
+The selected entry point is loaded from `https://<game-origin>/game/<entry-point>`. A second path route maps root-relative URLs such as `/assets/player.png` to the selected game folder, which is how a conventional local web server behaves.
 
 Missing or invalid local paths return a 404 response rather than falling through to the network.
 
