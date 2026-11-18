@@ -341,10 +341,10 @@ class MainActivity : Activity() {
                     else -> "Data reset unavailable"
                 }
                 addAction(secondaryActions, dataActionLabel) {
-                    if (game.browserProfile.isBlank()) {
-                        isolateGameSaves(game)
-                    } else {
-                        confirmClearGameData(game)
+                    when {
+                        !supportsPerGameProfiles() -> isolateGameSaves(game)
+                        game.browserProfile.isBlank() -> isolateGameSaves(game)
+                        else -> confirmClearGameData(game)
                     }
                 }
                 addAction(secondaryActions, "Remove") { confirmRemoveGame(game) }
@@ -383,13 +383,9 @@ class MainActivity : Activity() {
             when (game.storageType) {
                 LibraryStorageType.IMPORTED -> resolveGameRoot(game)
                 LibraryStorageType.FOLDER -> {
-                    val uri = Uri.parse(game.sourceUri)
-                    if (!hasFolderReadGrant(uri)) {
+                    if (!hasFolderReadGrant(Uri.parse(game.sourceUri))) {
                         return "Folder access was revoked. Reconnect this folder to play."
                     }
-                    val root = DocumentFile.fromTreeUri(this, uri)
-                        ?: throw IOException("The selected folder is no longer available.")
-                    validateFolderEntryPoint(root, game.entryPoint)
                 }
                 else -> throw IOException("Unsupported game storage type.")
             }
@@ -434,7 +430,8 @@ class MainActivity : Activity() {
             "Imported ZIP copy (stored inside Pocket Gameplay)"
         }
         val dataDescription = when {
-            game.browserProfile.isNotBlank() -> "Dedicated browser profile"
+            game.browserProfile.isNotBlank() && supportsPerGameProfiles() -> "Dedicated browser profile"
+            game.browserProfile.isNotBlank() -> "Dedicated profile saved; current WebView cannot access it"
             supportsPerGameProfiles() -> "Legacy shared profile; can be isolated"
             else -> "Legacy shared profile; this WebView cannot isolate it"
         }
@@ -474,39 +471,49 @@ class MainActivity : Activity() {
         }
         try {
             contentResolver.takePersistableUriPermission(treeUri, readGrant)
-        } catch (_: SecurityException) {
-            showHome("Could not retain access to that folder. Please select it again.")
-            return
-        }
-
-        val root = try {
-            DocumentFile.fromTreeUri(this, treeUri)
-                ?: throw IOException("Android could not open the selected folder.")
         } catch (exception: Exception) {
             releaseFolderGrantIfUnused(treeUri)
-            showHome(exception.message ?: "Android could not open the selected folder.")
+            showHome("Could not retain access to that folder: " + (exception.message ?: "Please select it again."))
             return
         }
 
-        val entryPoint = try {
-            validateFolderEntryPoint(root, game.entryPoint)
-            game.entryPoint
-        } catch (_: IOException) {
-            val entries = GameEntryPointScanner.scan(root)
-            if (entries.isEmpty()) {
-                releaseFolderGrantIfUnused(treeUri)
-                showHome("No HTML or HTM start pages were found in that folder.")
-                return
-            }
-            if (entries.size == 1) {
-                entries.first().relativePath
-            } else {
-                chooseReconnectedFolderEntryPoint(game, treeUri, entries)
-                return
+        worker.execute {
+            try {
+                val root = DocumentFile.fromTreeUri(this, treeUri)
+                    ?: throw IOException("Android could not open the selected folder.")
+                val existingEntryPoint = runCatching {
+                    validateFolderEntryPoint(root, game.entryPoint)
+                    game.entryPoint
+                }.getOrNull()
+                val alternatives = if (existingEntryPoint == null) {
+                    GameEntryPointScanner.scan(root)
+                } else {
+                    emptyList()
+                }
+
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) {
+                        releaseFolderGrantIfUnused(treeUri)
+                    } else if (existingEntryPoint != null) {
+                        finishFolderReconnect(game, treeUri, existingEntryPoint)
+                    } else if (alternatives.isEmpty()) {
+                        releaseFolderGrantIfUnused(treeUri)
+                        showHome("No HTML or HTM start pages were found in that folder.")
+                    } else if (alternatives.size == 1) {
+                        finishFolderReconnect(game, treeUri, alternatives.first().relativePath)
+                    } else {
+                        chooseReconnectedFolderEntryPoint(game, treeUri, alternatives)
+                    }
+                }
+            } catch (exception: Exception) {
+                mainHandler.post {
+                    releaseFolderGrantIfUnused(treeUri)
+                    if (!isFinishing && !isDestroyed) {
+                        showHome(exception.message ?: "Android could not open the selected folder.")
+                    }
+                }
             }
         }
-
-        finishFolderReconnect(game, treeUri, entryPoint)
     }
 
     private fun chooseReconnectedFolderEntryPoint(
@@ -647,6 +654,7 @@ class MainActivity : Activity() {
 
         val backup = File(base, ".backup-" + game.id + "-" + System.nanoTime())
         var movedOriginal = false
+        var publishedReplacement = false
         try {
             if (currentWebViewGameId == game.id) destroyWebView()
             if (destination.exists()) {
@@ -657,6 +665,7 @@ class MainActivity : Activity() {
             }
 
             staged.publish(gamesDirectory, game.directoryName)
+            publishedReplacement = true
             val updated = game.copy(
                 rootPath = staged.rootPath,
                 entryPoint = entryPoint.relativePath
@@ -669,7 +678,7 @@ class MainActivity : Activity() {
             showHome("Game files replaced. The library identity and isolated save data were retained.")
         } catch (exception: Exception) {
             val newDirectory = File(base, game.directoryName)
-            if (newDirectory.exists()) newDirectory.deleteRecursively()
+            if (publishedReplacement && newDirectory.exists()) newDirectory.deleteRecursively()
             val restored = !movedOriginal || !backup.exists() || backup.renameTo(destination)
             staged.cleanup()
             val detail = if (restored) {
@@ -1262,6 +1271,8 @@ class MainActivity : Activity() {
         gamesDirectory.listFiles()?.forEach { directory ->
             if (directory.name.startsWith(".staging-")) {
                 directory.deleteRecursively()
+            } else if (directory.name.startsWith(".backup-")) {
+                // Keep a backup if startup restoration could not safely move it into place.
             } else if (storedIds != null && directory.name !in storedIds) {
                 directory.deleteRecursively()
             }
