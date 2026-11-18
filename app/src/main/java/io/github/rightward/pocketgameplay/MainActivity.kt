@@ -3,7 +3,6 @@ package io.github.rightward.pocketgameplay
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
 import android.database.Cursor
@@ -42,8 +41,7 @@ import java.util.concurrent.Executors
 
 private data class PendingGameDownload(
     val sourceUri: Uri,
-    val fileName: String,
-    val mimeType: String
+    val fileName: String
 )
 
 class MainActivity : Activity() {
@@ -987,7 +985,7 @@ class MainActivity : Activity() {
             ?.takeIf { it.contains('/') }
             ?: GameAssetMimeTypes.forFileName(safeName)
 
-        pendingDownload = PendingGameDownload(source.uri, safeName, safeMimeType)
+        pendingDownload = PendingGameDownload(source.uri, safeName)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = safeMimeType
