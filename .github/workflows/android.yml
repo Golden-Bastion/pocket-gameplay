@@ -5,6 +5,9 @@ on:
     branches: ["main"]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Refresh the shared default-branch caches weekly.
+    - cron: "23 4 * * 1"
 
 permissions:
   contents: read
@@ -15,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and test
+    name: Build, test and warm Gradle cache
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -26,12 +29,26 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      - name: Set up Gradle
+      # The Gradle action owns Gradle User Home caching. PRs restore the main
+      # cache read-only; only trusted main-branch runs publish refreshed state.
+      - name: Set up Gradle and restore shared cache
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.13"
+          cache-provider: enhanced
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # Eruda's verified npm tarball lives in the project build directory,
+      # outside Gradle User Home, so cache it separately.
+      - name: Restore Eruda package archive
+        id: eruda-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: app/build/downloads/
+          key: eruda-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts') }}
+          restore-keys: |
+            eruda-${{ runner.os }}-
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -42,7 +59,17 @@ jobs:
       - name: Run unit tests and assemble debug APK
         run: gradle testDebugUnitTest assembleDebug
 
+      # Cache entries are immutable. The hash gives changed Eruda pins a new
+      # key; this step only writes from main, never from pull-request contexts.
+      - name: Save Eruda package archive
+        if: github.ref == 'refs/heads/main' && steps.eruda-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: app/build/downloads/
+          key: eruda-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts') }}
+
       - name: Upload debug APK
+        if: github.event_name != 'schedule'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: pocket-gameplay-debug
