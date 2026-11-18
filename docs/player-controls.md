@@ -33,7 +33,9 @@ Back is resolved in this order:
 3. Exit the player's immersive fullscreen mode.
 4. Navigate backward through the game's WebView history.
 5. Return to the library.
-6. Use normal Activity Back behavior when already in the library.
+6. When already in the library, the first Back press displays **Press Back again to exit**. A second press within two seconds finishes the Activity; a later press starts a new confirmation window.
+
+The library exit confirmation uses monotonic elapsed time, so wall-clock changes do not affect its timeout. Entering the library resets any previous confirmation.
 
 ## Rotation and window changes
 
