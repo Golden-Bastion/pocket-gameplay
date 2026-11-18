@@ -67,6 +67,9 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 - [ ] Return from a throwaway imported game to the library, then immediately remove that entry. Confirm deletion completes without an "in-use" or locked-files error.
 - [ ] Return from an imported game to the library, then immediately replace/update its ZIP when that workflow is available. Confirm the previous WebView no longer holds the extracted files.
 - [ ] Reopen a retained game after returning to the library and confirm its localStorage/IndexedDB values are still present; closing the WebView must not clear its persistent browser profile.
+- [ ] While already in the library, press Android Back once and confirm the exit prompt appears without closing the app.
+- [ ] Press Back again within two seconds and confirm Pocket Gameplay exits.
+- [ ] Relaunch, press Back once, wait more than two seconds, then press again; confirm the second press starts a new confirmation instead of exiting immediately.
 
 ## E. Library lifecycle and save isolation
 
