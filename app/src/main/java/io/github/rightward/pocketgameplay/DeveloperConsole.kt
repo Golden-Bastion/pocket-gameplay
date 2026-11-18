@@ -4,9 +4,9 @@ internal object DeveloperConsole {
     const val ASSET_PATH_PREFIX = "/__pocket/"
 
     /**
-     * Injects Eruda once for the current page and returns an immediate state.
-     * Async asset loading updates window.__pocketGameplayEruda.status, which the
-     * native player polls so failures remain visible even when the page console is hidden.
+     * Loads the bundled Eruda script using the same minimal sequence as its
+     * documented bookmarklet: append the script, then call eruda.init().
+     * Eruda owns its floating entry button and panel interactions.
      */
     val TOGGLE_SCRIPT = """
         (function () {
@@ -15,23 +15,13 @@ internal object DeveloperConsole {
                 state = {
                     initialized: false,
                     loading: false,
-                    visible: false,
                     status: 'idle'
                 };
                 window.__pocketGameplayEruda = state;
             }
 
             if (state.initialized && window.eruda) {
-                if (state.visible) {
-                    window.eruda.hide();
-                    state.visible = false;
-                    state.status = 'hidden';
-                } else {
-                    window.eruda.show();
-                    window.eruda.show('console');
-                    state.visible = true;
-                    state.status = 'shown';
-                }
+                state.status = 'ready';
                 return state.status;
             }
 
@@ -63,23 +53,13 @@ internal object DeveloperConsole {
                         throw new Error('The bundled script did not expose Eruda.');
                     }
 
-                    window.eruda.init({
-                        tool: ['console', 'elements', 'network', 'resources', 'sources', 'info', 'snippets'],
-                        autoScale: true,
-                        useShadowDom: true
-                    });
-
-                    // Open the panel explicitly, then select the Console tool.
-                    // Keep Eruda's floating entry button visible as an alternate entry point.
-                    window.eruda.show();
-                    window.eruda.show('console');
+                    // Match Eruda's bookmarklet: eruda.init() with default behavior.
+                    window.eruda.init();
 
                     state.initialized = true;
-                    state.visible = true;
-                    state.status = 'shown';
+                    state.status = 'ready';
                 } catch (error) {
                     state.initialized = false;
-                    state.visible = false;
                     state.status = 'init_error';
                 }
             };
@@ -88,15 +68,14 @@ internal object DeveloperConsole {
                 window.clearTimeout(timeoutId);
                 state.loading = false;
                 state.initialized = false;
-                state.visible = false;
                 state.status = 'load_error';
                 if (script.parentNode) script.parentNode.removeChild(script);
             };
 
             try {
-                var parent = document.head || document.documentElement;
-                if (!parent) throw new Error('The page has no script container.');
-                parent.appendChild(script);
+                if (!document.body) throw new Error('The page body is not available.');
+                // The bookmarklet appends the script to document.body.
+                document.body.appendChild(script);
             } catch (error) {
                 window.clearTimeout(timeoutId);
                 state.loading = false;
