@@ -86,6 +86,11 @@ Use a locally stored media file. Codec support is device-dependent, so record th
 - [ ] Rename a library entry. Confirm the display title changes but the game still launches from the same files and start page.
 - [ ] Search by part of the title and by part of the start-page path. Confirm filtering works.
 - [ ] Switch between A–Z and Recently added sorting. Confirm the list order changes predictably.
+- [ ] Confirm games with local `rel=icon` links display the correct favicon in the library; games without one retain the Pocket Gameplay fallback mark.
+- [ ] Confirm favicons still display after force-stop/relaunch and with airplane mode enabled.
+- [ ] Confirm remote icon URLs are not fetched and do not prevent the game from opening offline.
+- [ ] Confirm the card keeps **Play** visible and moves secondary actions behind the vertical three-dot menu.
+- [ ] Open the three-dot menu and verify ZIP replacement, folder reconnection where applicable, rename, details, save-data action, and removal are available.
 - [ ] Open **Details** and verify it identifies an imported ZIP copy or a folder shortcut and shows the selected start page.
 - [ ] Import the fixture twice as two distinct games. On a WebView that supports named profiles, each new game should have a dedicated profile. Write data in both games, reload each, then clear data for only one game. The cleared game should report a fresh first load; the other game's previous localStorage/IndexedDB values should remain.
 - [ ] If the device shows **Isolate saves** for an older library item, only test this on a game whose existing saves you are willing to leave behind in the legacy shared profile. Confirm it starts with fresh data after isolation. Do not expect automatic migration of the old shared data.
